@@ -1,6 +1,8 @@
 {
   "name": "suppliers",
+  "display_name": "Suppliers",
   "version": "0.1.0",
+  "author": "Makestack",
   "description": "Stores supplier and vendor records and links them to catalogue entries for quick sourcing reference",
   "keywords": [
     {

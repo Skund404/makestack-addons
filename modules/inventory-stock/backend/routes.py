@@ -8,7 +8,9 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from makestack_sdk import get_userdb
+from makestack_sdk import get_module_userdb_factory
+
+get_userdb = get_module_userdb_factory("inventory-stock", ["inventory_stock_items"])
 
 router = APIRouter()
 

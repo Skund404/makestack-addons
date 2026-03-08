@@ -1,6 +1,8 @@
 {
   "name": "inventory-stock",
+  "display_name": "Inventory Stock",
   "version": "0.1.0",
+  "author": "Makestack",
   "description": "Adds quantity tracking to inventory items: amount on hand, unit, storage location, and low-stock threshold",
   "keywords": [
     {

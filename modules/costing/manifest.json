@@ -1,6 +1,8 @@
 {
   "name": "costing",
+  "display_name": "Costing",
   "version": "0.1.0",
+  "author": "Makestack",
   "description": "Records purchase prices per catalogue entry and rolls up total material cost for a project or workflow",
   "keywords": [
     {
