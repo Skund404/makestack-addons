@@ -1,0 +1,9 @@
+{
+  "name": "inventory-stock",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Track material and tool stock quantities, units, and reorder thresholds",
+  "author": "Makestack",
+  "license": "MIT",
+  "shell_version": ">=0.1.0"
+}

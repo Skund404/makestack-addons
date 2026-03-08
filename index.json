@@ -1,0 +1,37 @@
+{
+  "name": "makestack-official",
+  "description": "Official Makestack addons — modules, widgets, catalogues, and themes",
+  "version": "0.1.0",
+  "packages": {
+    "inventory-stock": {
+      "git": "https://github.com/makestack/makestack-addons",
+      "type": "module",
+      "description": "Track material and tool stock quantities, units, and reorder thresholds"
+    },
+    "costing": {
+      "git": "https://github.com/makestack/makestack-addons",
+      "type": "module",
+      "description": "Record purchase prices and calculate project material costs"
+    },
+    "suppliers": {
+      "git": "https://github.com/makestack/makestack-addons",
+      "type": "module",
+      "description": "Manage supplier and vendor contacts linked to catalogue entries"
+    },
+    "extended-widgets": {
+      "git": "https://github.com/makestack/makestack-addons",
+      "type": "widget-pack",
+      "description": "Keyword renderers for stock levels, costs, and supplier references"
+    },
+    "leatherworking-starter": {
+      "git": "https://github.com/makestack/makestack-addons",
+      "type": "catalogue",
+      "description": "Starter catalogue: essential leatherworking tools, materials, techniques, and workflows"
+    },
+    "forge-theme": {
+      "git": "https://github.com/makestack/makestack-addons",
+      "type": "data",
+      "description": "Forge theme — dark industrial palette with steel and amber accents"
+    }
+  }
+}

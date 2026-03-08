@@ -1,0 +1,13 @@
+{
+  "type": "material",
+  "name": "Ritza Tiger Thread",
+  "description": "Bonded polyester thread for hand saddle stitching. High tensile strength, UV-stable, pre-waxed. The most widely used thread in the craft.",
+  "tags": ["thread", "stitching", "polyester", "waxed"],
+  "properties": {
+    "diameter_mm": "0.6",
+    "material": "bonded polyester",
+    "pre_waxed": true,
+    "MATERIAL_REF_": "primary-thread"
+  },
+  "relationships": []
+}

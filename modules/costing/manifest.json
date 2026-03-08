@@ -1,0 +1,30 @@
+{
+  "name": "costing",
+  "version": "0.1.0",
+  "description": "Records purchase prices per catalogue entry and rolls up total material cost for a project or workflow",
+  "keywords": [
+    {
+      "keyword": "COST_",
+      "description": "Displays a formatted price badge (e.g. '£12.50 / side')",
+      "renderer": "CostBadge"
+    }
+  ],
+  "endpoints": [
+    { "method": "GET",    "path": "/prices",               "name": "list_prices",   "description": "List all price records" },
+    { "method": "GET",    "path": "/prices/{price_id}",    "name": "get_price",     "description": "Get a single price record" },
+    { "method": "POST",   "path": "/prices",               "name": "create_price",  "description": "Record a purchase price for a catalogue entry" },
+    { "method": "PUT",    "path": "/prices/{price_id}",    "name": "update_price",  "description": "Update a price record" },
+    { "method": "DELETE", "path": "/prices/{price_id}",    "name": "delete_price",  "description": "Remove a price record" }
+  ],
+  "tables": [
+    {
+      "name": "costing_prices",
+      "description": "Purchase prices linked to catalogue paths"
+    }
+  ],
+  "permissions": {
+    "catalogue_read": true,
+    "catalogue_write": false,
+    "userdb_namespaces": ["costing"]
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "costing",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Record purchase prices and calculate project material costs",
+  "author": "Makestack",
+  "license": "MIT",
+  "shell_version": ">=0.1.0"
+}

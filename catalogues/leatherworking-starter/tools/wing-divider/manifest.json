@@ -1,0 +1,13 @@
+{
+  "type": "tool",
+  "name": "Wing Divider",
+  "description": "A wing divider (also called a stitch compass) used to score a consistent stitch line parallel to a leather edge.",
+  "tags": ["leather", "marking", "hand-tool", "stitching"],
+  "properties": {
+    "material": "steel",
+    "adjustable": true,
+    "MEASUREMENT_": "4mm default spacing",
+    "use_case": "edge marking for saddle stitch"
+  },
+  "relationships": []
+}

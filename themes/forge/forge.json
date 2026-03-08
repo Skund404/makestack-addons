@@ -1,0 +1,22 @@
+{
+  "name": "forge",
+  "label": "Forge",
+  "description": "Dark industrial palette. Steel-blue backgrounds, amber accent, high readability.",
+  "--ms-bg":            "#0d1117",
+  "--ms-bg-secondary":  "#161b22",
+  "--ms-surface":       "#1c2230",
+  "--ms-surface-el":    "#232d3f",
+  "--ms-accent":        "#e6ac2b",
+  "--ms-accent-dim":    "rgba(230, 172, 43, 0.12)",
+  "--ms-accent-border": "rgba(230, 172, 43, 0.28)",
+  "--ms-purple":        "#a78bfa",
+  "--ms-text":          "#cdd9e5",
+  "--ms-text-muted":    "#8b949e",
+  "--ms-text-faint":    "#484f58",
+  "--ms-border":        "#1e2a3a",
+  "--ms-border-bright": "#2d3d52",
+  "--ms-success":       "#3fb950",
+  "--ms-warning":       "#d29922",
+  "--ms-danger":        "#f85149",
+  "--ms-radius":        "0.3rem"
+}

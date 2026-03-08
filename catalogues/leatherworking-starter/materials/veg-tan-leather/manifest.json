@@ -1,0 +1,14 @@
+{
+  "type": "material",
+  "name": "Veg-Tan Leather",
+  "description": "Vegetable-tanned cowhide. Firm, toolable, and ages to a warm honey patina. The standard choice for hand-stitched goods.",
+  "tags": ["leather", "cowhide", "toolable", "natural-tan", "veg-tan"],
+  "properties": {
+    "weight_oz": "3-4",
+    "finish": "natural",
+    "tanning": "vegetable",
+    "MATERIAL_REF_": "primary-leather",
+    "color": "natural tan"
+  },
+  "relationships": []
+}

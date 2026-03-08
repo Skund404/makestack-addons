@@ -1,0 +1,12 @@
+{
+  "type": "tool",
+  "name": "Edge Beveler",
+  "description": "A small chisel-like tool that removes the sharp 90° corner from cut leather edges, preparing them for burnishing.",
+  "tags": ["leather", "edge-finishing", "hand-tool"],
+  "properties": {
+    "sizes": "#1, #2, #3",
+    "material": "hardened steel",
+    "use_case": "chamfer raw leather edges before burnishing"
+  },
+  "relationships": []
+}

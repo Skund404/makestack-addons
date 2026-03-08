@@ -1,0 +1,13 @@
+{
+  "type": "tool",
+  "name": "Stitching Chisel",
+  "description": "Multi-prong chisel for punching evenly spaced stitch holes through leather. Available in 2, 4, and 6 prong variants.",
+  "tags": ["leather", "hole-punch", "hand-tool", "stitching"],
+  "properties": {
+    "material": "hardened steel",
+    "prong_spacing": "3.38mm or 3.85mm",
+    "MEASUREMENT_": "3.85mm prong spacing",
+    "use_case": "punch stitch holes"
+  },
+  "relationships": []
+}

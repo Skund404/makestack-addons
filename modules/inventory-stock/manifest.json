@@ -1,0 +1,30 @@
+{
+  "name": "inventory-stock",
+  "version": "0.1.0",
+  "description": "Adds quantity tracking to inventory items: amount on hand, unit, storage location, and low-stock threshold",
+  "keywords": [
+    {
+      "keyword": "STOCK_LEVEL_",
+      "description": "Displays current stock quantity with unit (e.g. '3 sides'). Turns red below reorder threshold.",
+      "renderer": "StockLevel"
+    }
+  ],
+  "endpoints": [
+    { "method": "GET",    "path": "/stock",               "name": "list_stock",   "description": "List all stock entries" },
+    { "method": "GET",    "path": "/stock/{entry_id}",    "name": "get_stock",    "description": "Get a single stock entry by ID" },
+    { "method": "POST",   "path": "/stock",               "name": "create_stock", "description": "Create a stock entry for an inventory item" },
+    { "method": "PUT",    "path": "/stock/{entry_id}",    "name": "update_stock", "description": "Update quantity, unit, location, or threshold" },
+    { "method": "DELETE", "path": "/stock/{entry_id}",    "name": "delete_stock", "description": "Remove a stock entry" }
+  ],
+  "tables": [
+    {
+      "name": "inventory_stock_items",
+      "description": "Stock quantities and locations for inventory items"
+    }
+  ],
+  "permissions": {
+    "catalogue_read": true,
+    "catalogue_write": false,
+    "userdb_namespaces": ["inventory_stock"]
+  }
+}

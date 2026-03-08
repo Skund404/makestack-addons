@@ -1,0 +1,20 @@
+{
+  "type": "technique",
+  "name": "Edge Finishing",
+  "description": "The process of transforming a raw cut leather edge into a smooth, sealed finish. Involves beveling, dampening, and burnishing.",
+  "tags": ["leather", "finishing", "edge", "beginner-friendly"],
+  "properties": {
+    "difficulty": "beginner",
+    "TIMER_": "15min per piece"
+  },
+  "steps": [
+    "Run an edge beveler (#1 or #2) along both faces of each raw edge.",
+    "Dampen the edge with a fingertip dipped in water.",
+    "Rub the edge firmly with a bone folder or wooden slicker in short strokes.",
+    "Repeat dampening and burnishing until the edge compresses to a smooth finish.",
+    "Optional: apply edge paint for a sealed, coloured finish."
+  ],
+  "relationships": [
+    { "type": "uses_tool", "target": "tools/edge-beveler/manifest.json" }
+  ]
+}

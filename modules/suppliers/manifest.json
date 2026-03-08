@@ -1,0 +1,30 @@
+{
+  "name": "suppliers",
+  "version": "0.1.0",
+  "description": "Stores supplier and vendor records and links them to catalogue entries for quick sourcing reference",
+  "keywords": [
+    {
+      "keyword": "SUPPLIER_REF_",
+      "description": "Renders a supplier badge with name and optional product URL",
+      "renderer": "SupplierRef"
+    }
+  ],
+  "endpoints": [
+    { "method": "GET",    "path": "/vendors",                  "name": "list_vendors",  "description": "List all vendor records" },
+    { "method": "GET",    "path": "/vendors/{vendor_id}",      "name": "get_vendor",    "description": "Get a vendor with its catalogue links" },
+    { "method": "POST",   "path": "/vendors",                  "name": "create_vendor", "description": "Create a new vendor record" },
+    { "method": "PUT",    "path": "/vendors/{vendor_id}",      "name": "update_vendor", "description": "Update vendor details" },
+    { "method": "DELETE", "path": "/vendors/{vendor_id}",      "name": "delete_vendor", "description": "Remove a vendor and all its catalogue links" },
+    { "method": "POST",   "path": "/vendors/{vendor_id}/links","name": "add_link",      "description": "Link a vendor to a catalogue entry" },
+    { "method": "DELETE", "path": "/links/{link_id}",          "name": "remove_link",   "description": "Remove a catalogue link" }
+  ],
+  "tables": [
+    { "name": "suppliers_vendors",       "description": "Supplier and vendor records" },
+    { "name": "suppliers_catalog_links", "description": "Links between vendors and catalogue entries" }
+  ],
+  "permissions": {
+    "catalogue_read": true,
+    "catalogue_write": false,
+    "userdb_namespaces": ["suppliers"]
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "leatherworking-starter",
+  "type": "catalogue",
+  "version": "0.1.0",
+  "description": "Starter catalogue: essential leatherworking tools, materials, techniques, and workflows",
+  "author": "Makestack",
+  "license": "CC0-1.0"
+}

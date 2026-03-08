@@ -1,0 +1,9 @@
+{
+  "name": "suppliers",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Manage supplier and vendor contacts linked to catalogue entries",
+  "author": "Makestack",
+  "license": "MIT",
+  "shell_version": ">=0.1.0"
+}

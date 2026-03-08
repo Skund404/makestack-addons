@@ -1,0 +1,32 @@
+{
+  "type": "workflow",
+  "name": "Bifold Wallet Build",
+  "description": "Complete workflow for constructing a classic bifold wallet from veg-tan leather. Beginner-friendly, no machinery required.",
+  "tags": ["leather", "wallet", "bifold", "beginner", "project-type"],
+  "properties": {
+    "complexity": "beginner",
+    "TIMER_": "3h total",
+    "output": "bifold wallet",
+    "leather_needed": "one 4oz veg-tan side or offcuts"
+  },
+  "steps": [
+    "Cut card pocket panels (9cm × 8cm each, 4 panels for 2 pockets).",
+    "Cut main body panel (19cm × 9cm).",
+    "Bevel all edges with an edge beveler.",
+    "Burnish all edges.",
+    "Mark stitch lines with a wing divider (4mm from edge).",
+    "Punch stitch holes with a stitching chisel.",
+    "Saddle stitch card pockets to main body.",
+    "Apply conditioner (neatsfoot oil or leather balm).",
+    "Fold and check final dimensions."
+  ],
+  "relationships": [
+    { "type": "uses_technique", "target": "techniques/saddle-stitching/manifest.json" },
+    { "type": "uses_technique", "target": "techniques/edge-finishing/manifest.json" },
+    { "type": "uses_material",  "target": "materials/veg-tan-leather/manifest.json" },
+    { "type": "uses_material",  "target": "materials/ritza-thread/manifest.json" },
+    { "type": "uses_tool",      "target": "tools/wing-divider/manifest.json" },
+    { "type": "uses_tool",      "target": "tools/stitching-chisel/manifest.json" },
+    { "type": "uses_tool",      "target": "tools/edge-beveler/manifest.json" }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "name": "extended-widgets",
+  "type": "widget-pack",
+  "version": "0.1.0",
+  "description": "Keyword renderers for stock levels, costs, and supplier references — standalone widgets without module backend",
+  "author": "Makestack",
+  "license": "MIT",
+  "keywords": ["STOCK_LEVEL_", "COST_", "SUPPLIER_REF_"]
+}

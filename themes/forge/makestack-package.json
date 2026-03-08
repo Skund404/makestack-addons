@@ -1,0 +1,11 @@
+{
+  "name": "forge-theme",
+  "type": "data",
+  "version": "0.1.0",
+  "description": "Forge theme — dark industrial palette with steel-blue backgrounds and amber accents",
+  "author": "Makestack",
+  "license": "MIT",
+  "targets": {
+    "forge.json": ".makestack/themes/forge.json"
+  }
+}
