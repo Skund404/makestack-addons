@@ -32,7 +32,7 @@
       "git": "https://github.com/makestack/makestack-addons",
       "type": "data",
       "description": "Forge theme — dark industrial palette with steel and amber accents"
-    }
+    },
 	"kitchen": {
 		"git": "https://github.com/makestack/makestack-addons",
 		"type": "module",
