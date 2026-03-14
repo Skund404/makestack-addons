@@ -4,40 +4,46 @@
   "version": "0.1.0",
   "packages": {
     "inventory-stock": {
-      "git": "https://github.com/makestack/makestack-addons",
+      "git": "https://github.com/Skund404/makestack-addons",
       "type": "module",
+      "subdir": "modules/inventory-stock",
       "description": "Track material and tool stock quantities, units, and reorder thresholds"
     },
     "costing": {
-      "git": "https://github.com/makestack/makestack-addons",
+      "git": "https://github.com/Skund404/makestack-addons",
       "type": "module",
+      "subdir": "modules/costing",
       "description": "Record purchase prices and calculate project material costs"
     },
     "suppliers": {
-      "git": "https://github.com/makestack/makestack-addons",
+      "git": "https://github.com/Skund404/makestack-addons",
       "type": "module",
+      "subdir": "modules/suppliers",
       "description": "Manage supplier and vendor contacts linked to catalogue entries"
     },
     "extended-widgets": {
-      "git": "https://github.com/makestack/makestack-addons",
+      "git": "https://github.com/Skund404/makestack-addons",
       "type": "widget-pack",
+      "subdir": "widget-packs/extended-widgets",
       "description": "Keyword renderers for stock levels, costs, and supplier references"
     },
     "leatherworking-starter": {
-      "git": "https://github.com/makestack/makestack-addons",
+      "git": "https://github.com/Skund404/makestack-addons",
       "type": "catalogue",
+      "subdir": "catalogues/leatherworking-starter",
       "description": "Starter catalogue: essential leatherworking tools, materials, techniques, and workflows"
     },
     "forge-theme": {
-      "git": "https://github.com/makestack/makestack-addons",
+      "git": "https://github.com/Skund404/makestack-addons",
       "type": "data",
+      "subdir": "themes/forge",
       "description": "Forge theme — dark industrial palette with steel and amber accents"
     },
-	"kitchen": {
-		"git": "https://github.com/makestack/makestack-addons",
-		"type": "module",
-		"subdir": "modules/kitchen",
-		"description": "Recipes, pantry, fridge, freezer, meal planning, and AI-assisted kitchen management"
-	}
+    "kitchen": {
+      "git": "https://github.com/Skund404/makestack-addons",
+      "type": "module",
+      "subdir": "modules/kitchen",
+      "description": "Recipes, pantry, fridge, freezer, meal planning, and AI-assisted kitchen management"
+    }
   }
 }
