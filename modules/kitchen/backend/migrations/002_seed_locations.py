@@ -14,11 +14,11 @@ _LOCATIONS = [
 
 
 async def up(db) -> None:
-    """Insert the four default kitchen locations."""
+    """Insert the four default kitchen locations (idempotent — skips existing rows)."""
     for location_key, name, icon, sort_order in _LOCATIONS:
         await db.execute(
             """
-            INSERT INTO kitchen_locations (id, name, location_key, icon, sort_order)
+            INSERT OR IGNORE INTO kitchen_locations (id, name, location_key, icon, sort_order)
             VALUES (?, ?, ?, ?, ?)
             """,
             [str(uuid.uuid4()), name, location_key, icon, sort_order],
