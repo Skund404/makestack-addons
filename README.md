@@ -16,7 +16,7 @@ This repository serves a dual purpose: it is both the **registry index** (read b
 | `extended-widgets` | widget-pack | Keyword renderers for stock levels, costs, and supplier references |
 | `leatherworking-starter` | catalogue | Starter catalogue: essential leatherworking tools, materials, techniques, and workflows |
 | `forge-theme` | data | Forge theme — dark industrial palette with steel and amber accents |
-
+| `kitchen` | module | Recipes, pantry, fridge, freezer, meal planning, and AI-assisted kitchen management |
 ---
 
 ## Using as a Registry
@@ -68,6 +68,13 @@ makestack install ./themes/forge
 makestack-addons/
 ├── index.json                          # Registry index — package discovery manifest
 ├── modules/
+│   ├── kitchen/                        # Module: kitchen management
+│   │   ├── makestack-package.json
+│   │   ├── manifest.json
+│   │   ├── SKILL.md
+│   │   ├── README.md
+│   │   ├── backend/
+│   │   └── frontend/
 │   ├── inventory-stock/                # Module: stock quantity tracking
 │   │   ├── makestack-package.json
 │   │   ├── manifest.json

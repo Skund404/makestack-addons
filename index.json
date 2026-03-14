@@ -33,5 +33,11 @@
       "type": "data",
       "description": "Forge theme — dark industrial palette with steel and amber accents"
     }
+	"kitchen": {
+		"git": "https://github.com/makestack/makestack-addons",
+		"type": "module",
+		"subdir": "modules/kitchen",
+		"description": "Recipes, pantry, fridge, freezer, meal planning, and AI-assisted kitchen management"
+	}
   }
 }
