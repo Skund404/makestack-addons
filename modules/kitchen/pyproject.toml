@@ -1,0 +1,10 @@
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "--import-mode=importlib"
+pythonpath = [
+    # makestack-shell must be on sys.path so makestack_sdk and backend.sdk resolve.
+    # The kitchen module root is intentionally omitted — adding it would put
+    # backend/__init__.py ahead of the shell's backend namespace package.
+    "../../../makestack-shell"
+]

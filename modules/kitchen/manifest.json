@@ -1,0 +1,85 @@
+{
+  "name": "kitchen",
+  "display_name": "Home Kitchen",
+  "version": "0.1.0",
+  "description": "Recipes, pantry, fridge, freezer, meal planning, and AI-assisted kitchen management",
+  "author": "Makestack",
+  "license": "proprietary",
+  "shell_compatibility": ">=0.1.0",
+  "has_backend": true,
+  "has_frontend": true,
+
+  "peer_modules": {
+    "required": [
+      { "name": "inventory-stock", "description": "Stock quantity tracking — kitchen stock is a filtered view of inventory stock" }
+    ],
+    "optional": [
+      { "name": "costing", "description": "Per-recipe cost calculation from ingredient prices" },
+      { "name": "suppliers", "description": "Link ingredients to supplier catalogue entries" }
+    ]
+  },
+
+  "read_tables": ["inventory_stock_items"],
+
+  "userdb_tables": [
+    { "name": "kitchen_recipes",              "description": "Recipe records linking catalogue workflows to kitchen metadata" },
+    { "name": "kitchen_recipe_ingredients",   "description": "Ingredient entries per recipe with quantities and units" },
+    { "name": "kitchen_recipe_nutrition",     "description": "Nutritional data per recipe (per serving)" },
+    { "name": "kitchen_ingredient_nutrition", "description": "Nutritional data per ingredient (per 100g)" },
+    { "name": "kitchen_meal_plan",            "description": "Weekly meal plans (one record per Monday ISO date)" },
+    { "name": "kitchen_meal_plan_entries",    "description": "Individual meal slot entries within a meal plan" },
+    { "name": "kitchen_cook_log",             "description": "Cooking session log with rating and stock deduction flag" },
+    { "name": "kitchen_locations",            "description": "Location configuration: pantry, fridge, freezer, other" },
+    { "name": "kitchen_stock_aliases",        "description": "Receipt text to catalogue path mappings for bulk import" },
+    { "name": "kitchen_stock_metadata",       "description": "Expiry date and frozen-on date per stock item (extends inventory-stock)" }
+  ],
+
+  "api_endpoints": [
+    { "method": "GET",  "path": "/stock/expiring",                 "name": "list_expiring_stock",    "description": "List stock items expiring within a given number of days (reads kitchen_stock_metadata)" },
+    { "method": "GET",  "path": "/stock/aliases/lookup",           "name": "lookup_stock_alias",     "description": "Look up a catalogue path by receipt text" },
+    { "method": "POST", "path": "/stock/aliases",                  "name": "save_stock_alias",       "description": "Save a receipt text to catalogue path alias" },
+    { "method": "POST", "path": "/stock/bulk",                     "name": "bulk_update_stock",      "description": "Batch update stock items from receipt parsing result (proxies inventory-stock)" },
+
+    { "method": "GET",  "path": "/recipes",                        "name": "list_recipes",           "description": "List recipes with optional filters: cuisine_tag, max_cook_time, search" },
+    { "method": "GET",  "path": "/recipes/{recipe_id}",            "name": "get_recipe",             "description": "Full recipe with ingredients, nutrition, and cook log summary" },
+    { "method": "POST", "path": "/recipes",                        "name": "create_recipe",          "description": "Create a new recipe" },
+    { "method": "PUT",  "path": "/recipes/{recipe_id}",            "name": "update_recipe",          "description": "Update an existing recipe" },
+    { "method": "GET",  "path": "/recipes/can-make",               "name": "list_can_make",          "description": "Recipes that can be made from current stock" },
+    { "method": "GET",  "path": "/recipes/{recipe_id}/stock-check","name": "recipe_stock_check",     "description": "Stock availability breakdown for a specific recipe" },
+
+    { "method": "GET",  "path": "/recipes/{recipe_id}/nutrition",  "name": "get_recipe_nutrition",   "description": "Nutrition breakdown per serving for a recipe" },
+    { "method": "POST", "path": "/nutrition/ingredient",           "name": "set_ingredient_nutrition","description": "Set or update nutritional data for an ingredient" },
+    { "method": "POST", "path": "/recipes/{recipe_id}/nutrition/calculate", "name": "calculate_recipe_nutrition", "description": "Recalculate recipe nutrition from stored ingredient data" },
+
+    { "method": "GET",  "path": "/meal-plan/{week}",               "name": "get_meal_plan",          "description": "Get or create the meal plan for a week (Monday ISO date)" },
+    { "method": "PUT",  "path": "/meal-plan/{week}/entry",         "name": "set_meal_plan_entry",    "description": "Set a meal slot entry in a weekly plan" },
+    { "method": "GET",  "path": "/meal-plan/{week}/shopping-list", "name": "get_shopping_list",      "description": "Required ingredients for the week minus current stock" },
+
+    { "method": "POST", "path": "/cook-log",                       "name": "record_cook_session",    "description": "Record a cooking session (auto-deducts stock via inventory-stock peer)" },
+    { "method": "GET",  "path": "/cook-log",                       "name": "list_cook_log",          "description": "List cooking sessions with optional filters: recipe_id, date range, rating" }
+  ],
+
+  "views": [
+    { "id": "kitchen-pantry",        "label": "Pantry",         "route": "/kitchen/pantry",        "icon": "Archive",     "sort_order": 0 },
+    { "id": "kitchen-fridge",        "label": "Fridge",         "route": "/kitchen/fridge",        "icon": "Thermometer", "sort_order": 1 },
+    { "id": "kitchen-freezer",       "label": "Freezer",        "route": "/kitchen/freezer",       "icon": "Snowflake",   "sort_order": 2 },
+    { "id": "kitchen-recipes",       "label": "Recipes",        "route": "/kitchen/recipes",       "icon": "BookOpen",    "sort_order": 3 },
+    { "id": "kitchen-recipe-detail", "label": "Recipe",         "route": "/kitchen/recipes/:id",   "icon": "BookOpen",    "sort_order": 4 },
+    { "id": "kitchen-meal-plan",     "label": "Meal Plan",      "route": "/kitchen/meal-plan",     "icon": "Calendar",    "sort_order": 5 },
+    { "id": "kitchen-shopping-list", "label": "Shopping List",  "route": "/kitchen/shopping",      "icon": "ShoppingCart","sort_order": 6 },
+    { "id": "kitchen-cook-log",      "label": "Cook Log",       "route": "/kitchen/cook-log",      "icon": "ClipboardList","sort_order": 7 }
+  ],
+
+  "panels": [
+    { "id": "kitchen-stock-overview",    "label": "Kitchen Stock Overview",  "size": "full" },
+    { "id": "kitchen-can-make-tonight",  "label": "Can Make Tonight",        "size": "half" },
+    { "id": "kitchen-expiring-soon",     "label": "Expiring Soon",           "size": "half" },
+    { "id": "kitchen-meal-plan-today",   "label": "Today's Meal Plan",       "size": "half" },
+    { "id": "kitchen-recently-cooked",   "label": "Recently Cooked",         "size": "third" }
+  ],
+
+  "keywords": [],
+  "dependencies": { "python": [], "node": [] },
+  "core_api_permissions": [],
+  "config_defaults": {}
+}

@@ -1,0 +1,9 @@
+{
+  "name": "kitchen",
+  "version": "0.1.0",
+  "type": "module",
+  "display_name": "Home Kitchen",
+  "description": "Recipes, pantry, fridge, freezer, meal planning, and AI-assisted kitchen management",
+  "author": "Makestack",
+  "shell_compatibility": ">=0.1.0"
+}
