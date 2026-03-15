@@ -873,6 +873,67 @@ async def list_cook_log(
 
 
 # ---------------------------------------------------------------------------
+# GET /stock — list stock with optional location filter
+# Joins inventory_stock_items + inventory + kitchen_stock_metadata.
+# Must be declared before /stock/aliases/lookup and /stock/expiring to keep
+# the static sub-paths (/aliases/..., /expiring) matched before the bare /stock.
+# ---------------------------------------------------------------------------
+
+
+@router.get("/stock")
+async def list_stock(
+    location: str | None = Query(None, description="Filter by location key (pantry/fridge/freezer/other)"),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    db: ModuleUserDB = Depends(get_db),
+):
+    """List stock items, optionally filtered by location.
+
+    Joins inventory_stock_items with inventory (for catalogue_path) and
+    kitchen_stock_metadata (for expiry_date / frozen_on_date).
+    """
+    where = "WHERE 1=1"
+    params: list = []
+    if location:
+        where += " AND isi.location = ?"
+        params.append(location)
+
+    total_row = await db.fetch_one(
+        f"SELECT COUNT(*) AS n FROM inventory_stock_items isi {where}",
+        params,
+    )
+    total = total_row["n"] if total_row else 0
+
+    rows = await db.fetch_all(
+        f"""
+        SELECT
+            isi.id,
+            inv.catalogue_path,
+            isi.quantity,
+            isi.unit,
+            isi.location,
+            isi.notes,
+            m.expiry_date,
+            m.frozen_on_date
+        FROM inventory_stock_items isi
+        JOIN inventory inv ON inv.id = isi.inventory_id
+        LEFT JOIN kitchen_stock_metadata m ON m.stock_item_id = isi.id
+        {where}
+        ORDER BY inv.catalogue_path
+        LIMIT ? OFFSET ?
+        """,
+        params + [limit, offset],
+    )
+
+    return {
+        "items": [dict(r) for r in rows],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Stock alias endpoints
 # NOTE: GET /stock/aliases/lookup must be declared before any GET /stock/{id}
 # route that may be added in a later phase.

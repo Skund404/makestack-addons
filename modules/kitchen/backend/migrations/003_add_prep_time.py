@@ -21,4 +21,4 @@ async def up(db) -> None:
 async def down(db) -> None:
     # DROP COLUMN requires SQLite >= 3.35.0
     await db.execute("ALTER TABLE kitchen_recipes DROP COLUMN prep_time_mins")
-    await db.execute("ALTER TABLE kitchen_ingredient_nutrition DROP COLUMN source TEXT")
+    await db.execute("ALTER TABLE kitchen_ingredient_nutrition DROP COLUMN source")

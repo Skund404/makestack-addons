@@ -35,6 +35,7 @@
   ],
 
   "api_endpoints": [
+    { "method": "GET",  "path": "/stock",                          "name": "list_stock",             "description": "List kitchen stock items, optionally filtered by location (pantry/fridge/freezer/other)" },
     { "method": "GET",  "path": "/stock/expiring",                 "name": "list_expiring_stock",    "description": "List stock items expiring within a given number of days (reads kitchen_stock_metadata)" },
     { "method": "GET",  "path": "/stock/aliases/lookup",           "name": "lookup_stock_alias",     "description": "Look up a catalogue path by receipt text" },
     { "method": "POST", "path": "/stock/aliases",                  "name": "save_stock_alias",       "description": "Save a receipt text to catalogue path alias" },
@@ -64,10 +65,9 @@
     { "id": "kitchen-fridge",        "label": "Fridge",         "route": "/kitchen/fridge",        "icon": "Thermometer", "sort_order": 1 },
     { "id": "kitchen-freezer",       "label": "Freezer",        "route": "/kitchen/freezer",       "icon": "Snowflake",   "sort_order": 2 },
     { "id": "kitchen-recipes",       "label": "Recipes",        "route": "/kitchen/recipes",       "icon": "BookOpen",    "sort_order": 3 },
-    { "id": "kitchen-recipe-detail", "label": "Recipe",         "route": "/kitchen/recipes/:id",   "icon": "BookOpen",    "sort_order": 4 },
-    { "id": "kitchen-meal-plan",     "label": "Meal Plan",      "route": "/kitchen/meal-plan",     "icon": "Calendar",    "sort_order": 5 },
-    { "id": "kitchen-shopping-list", "label": "Shopping List",  "route": "/kitchen/shopping",      "icon": "ShoppingCart","sort_order": 6 },
-    { "id": "kitchen-cook-log",      "label": "Cook Log",       "route": "/kitchen/cook-log",      "icon": "ClipboardList","sort_order": 7 }
+    { "id": "kitchen-meal-plan",     "label": "Meal Plan",      "route": "/kitchen/meal-plan",     "icon": "Calendar",    "sort_order": 4 },
+    { "id": "kitchen-shopping-list", "label": "Shopping List",  "route": "/kitchen/shopping",      "icon": "ShoppingCart","sort_order": 5 },
+    { "id": "kitchen-cook-log",      "label": "Cook Log",       "route": "/kitchen/cook-log",      "icon": "ClipboardList","sort_order": 6 }
   ],
 
   "panels": [
