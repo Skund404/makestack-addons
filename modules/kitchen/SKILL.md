@@ -54,22 +54,29 @@ items they just bought.
    search results. If no match exists, call `create_primitive` (type=material)
    to create the ingredient in the catalogue first. Never guess a path.
 
-5. **Save alias** — call `kitchen__save_alias` to map the original receipt text
+5. **Inventory pin** — for each resolved path, call `add_to_inventory` with the
+   `catalogue_path` and `primitive_type="material"` if the item is not already
+   in the user's inventory. This is a hard prerequisite: `kitchen__bulk_update_stock`
+   looks up items by `catalogue_path` in the `inventory` table and will silently
+   fail with "No inventory item found" if the pin is missing. Check the current
+   inventory first with `list_inventory` to avoid duplicate pins.
+
+6. **Save alias** — call `kitchen__save_alias` to map the original receipt text
    to the resolved catalogue_path. This prevents repeated lookups on future
    receipts.
 
-6. **Location assignment** — ask the user where each item goes (pantry, fridge,
+7. **Location assignment** — ask the user where each item goes (pantry, fridge,
    freezer) if not obvious from context. Frozen items → freezer. Dairy, fresh
    produce → fridge. Everything else → pantry by default.
 
-7. **Bulk update** — collect all resolved items and call
+8. **Bulk update** — collect all resolved items and call
    `kitchen__bulk_update_stock` in a single call. Include `expiry_date` when
    visible on the packaging. Use `action: "add"` when adding to existing stock,
    `action: "set"` only when the receipt represents the total new quantity.
 
-8. **Confirm results** — report back: N updated, M created, K failed. For
-   failed items (e.g. no inventory record), explain what went wrong and offer to
-   create the missing catalogue entry.
+9. **Confirm results** — report back: N updated, M created, K failed. For
+   failed items, explain what went wrong. A "No inventory item found" failure
+   means step 5 was missed — call `add_to_inventory` for that item and retry.
 
 ---
 
@@ -243,9 +250,7 @@ notations.
 | Tool | Endpoint | Description |
 |---|---|---|
 | `kitchen__list_stock` | GET /stock | List stock (with location filter) |
-| `kitchen__update_stock` | PUT /stock/{id} | Update a stock item |
-| `kitchen__add_stock_item` | POST /stock | Add a new stock item |
-| `kitchen__bulk_update_stock` | POST /stock/bulk | Batch create/update from receipt |
+| `kitchen__bulk_update_stock` | POST /stock/bulk | Batch create/update from receipt (primary write path) |
 | `kitchen__get_expiring_soon` | GET /stock/expiring | Items expiring within N days |
 | `kitchen__lookup_alias` | GET /stock/aliases/lookup | Resolve receipt text → catalogue_path |
 | `kitchen__save_alias` | POST /stock/aliases | Save receipt text alias |
