@@ -78,6 +78,27 @@
     { "id": "kitchen-recently-cooked",   "label": "Recently Cooked",         "size": "third" }
   ],
 
+  "app_mode": {
+    "enabled": true,
+    "title": "Kitchen",
+    "subtitle": "Home module",
+    "sidebar_width": 186,
+    "home_route": "/kitchen",
+    "nav_items": [
+      { "id": "kitchen-home",          "label": "Home",      "icon": "Home",         "route": "/kitchen" },
+      { "id": "kitchen-larder",        "label": "Larder",    "icon": "Archive",      "route": "/kitchen/larder" },
+      { "id": "kitchen-recipes",       "label": "Recipes",   "icon": "BookOpen",     "route": "/kitchen/recipes" },
+      { "id": "kitchen-meal-plan",     "label": "Plan",      "icon": "Calendar",     "route": "/kitchen/meal-plan" },
+      { "id": "kitchen-shopping",      "label": "Shop",      "icon": "ShoppingCart", "route": "/kitchen/shopping" }
+    ],
+    "theme": {
+      "sidebar_bg": "#15100b",
+      "sidebar_text": "#eddec8",
+      "sidebar_active_bg": "#271d12",
+      "accent": "#c8935a"
+    }
+  },
+
   "keywords": [],
   "dependencies": { "python": [], "node": [] },
   "core_api_permissions": [],

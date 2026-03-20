@@ -129,16 +129,28 @@ All mounted at /modules/kitchen/. Auto-generate MCP tools with naming: kitchen__
 ## Manifest
 
 
-### Views (Phase 8, registered in manifest.json views[])
-- kitchen-pantry, kitchen-fridge, kitchen-freezer — location-filtered stock views
-- kitchen-recipes — recipe library
-- kitchen-recipe-detail — full recipe view
-- kitchen-meal-plan — weekly calendar grid
-- kitchen-shopping-list — generated shopping list
-- kitchen-cook-log — cooking history
+### App Mode (standalone layout)
+The kitchen module uses standalone app mode — it renders with its own branded
+sidebar instead of appearing as views in the shell sidebar. Declared in
+manifest.json `app_mode` field.
 
+- Title: "Kitchen", subtitle: "Home module"
+- Theme: warm brown (#15100b bg, #eddec8 text, Cormorant Garamond serif)
+- Custom sidebar: `KitchenSidebar` component with shopping list badge
+- Home route: `/kitchen`
+- Nav items: Home, Larder, Recipes, Plan, Shop
 
-### Panels (Phase 8, registered in manifest.json panels[])
+### Views
+- `/kitchen` — dashboard (today's plan + quick look widgets)
+- `/kitchen/larder` — three-column stock view (Pantry/Fridge/Freezer)
+- `/kitchen/pantry`, `/kitchen/fridge`, `/kitchen/freezer` — legacy location views
+- `/kitchen/recipes` — recipe library
+- `/kitchen/recipes/:id` — recipe detail
+- `/kitchen/meal-plan` — weekly calendar grid
+- `/kitchen/shopping` — shopping list
+- `/kitchen/cook-log` — cooking history
+
+### Panels (workshop home dashboard)
 - kitchen-stock-overview (full) — three-column stock summary
 - kitchen-can-make-tonight (half) — makeable recipes
 - kitchen-expiring-soon (half) — items expiring within 7 days
@@ -175,14 +187,16 @@ K1 migrations + models + stock metadata table →
 K2 recipe CRUD + ingredients + nutrition →
 K3 meal plan + shopping list + cook log →
 K4 can-make query + bulk stock + alias table →
-K5 frontend (GATED on Phase 8B) →
-K6 SKILL.md + manifest + full test suite
+K5 frontend panels + views (Phase 8B) →
+K6 SKILL.md + manifest + full test suite →
+K7 standalone app mode + Home + Larder views + custom sidebar
 
 
 ## Current State
 
 
-K6 complete: SKILL.md, README.md, manifest finalised, GET /stock/expiring added, 113 passing tests.
+K7 complete: standalone app mode with custom sidebar, KitchenHome dashboard,
+KitchenLarder three-column view, app_mode manifest. 113 passing tests.
 
 
 ## Session Log

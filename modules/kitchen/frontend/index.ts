@@ -1,8 +1,9 @@
 /**
- * Kitchen module frontend — registers all panels and views with the shell.
+ * Kitchen module frontend — registers panels, views, and app mode with the shell.
  *
  * registerKitchenModule() is called by the shell's registry.ts (auto-generated
  * at build time when the kitchen module is installed). It registers:
+ *  - App mode: standalone layout with branded sidebar
  *  - Panels: resolved by the workshop home page via panel-registry
  *  - Views:  resolved by the shell's ModuleViewRenderer via view-registry
  *
@@ -10,19 +11,46 @@
  */
 import { registerPanel } from '@/modules/panel-registry'
 import { registerView } from '@/modules/view-registry'
+import { registerAppMode } from '@/modules/app-registry'
 import { KitchenStockOverview } from './panels/KitchenStockOverview'
 import { KitchenCanMakeTonight } from './panels/KitchenCanMakeTonight'
 import { KitchenExpiringSoon } from './panels/KitchenExpiringSoon'
 import { KitchenMealPlanToday } from './panels/KitchenMealPlanToday'
 import { KitchenRecentlyCooked } from './panels/KitchenRecentlyCooked'
+import { KitchenHome } from './views/KitchenHome'
+import { KitchenLarder } from './views/KitchenLarder'
 import { KitchenPantry, KitchenFridge, KitchenFreezer } from './views/KitchenStockView'
 import { KitchenRecipes } from './views/KitchenRecipes'
 import { KitchenRecipeDetail } from './views/KitchenRecipeDetail'
 import { KitchenMealPlan } from './views/KitchenMealPlan'
 import { KitchenShoppingList } from './views/KitchenShoppingList'
 import { KitchenCookLog } from './views/KitchenCookLog'
+import { KitchenSidebar } from './components/KitchenSidebar'
 
 export function registerKitchenModule(): void {
+  // --- App mode (standalone layout) ---
+  registerAppMode({
+    module_name: 'kitchen',
+    title: 'Kitchen',
+    subtitle: 'Home module',
+    sidebar_width: 186,
+    home_route: '/kitchen',
+    nav_items: [
+      { id: 'kitchen-home',      label: 'Home',    icon: 'Home',         route: '/kitchen' },
+      { id: 'kitchen-larder',    label: 'Larder',  icon: 'Archive',      route: '/kitchen/larder' },
+      { id: 'kitchen-recipes',   label: 'Recipes', icon: 'BookOpen',     route: '/kitchen/recipes' },
+      { id: 'kitchen-meal-plan', label: 'Plan',    icon: 'Calendar',     route: '/kitchen/meal-plan' },
+      { id: 'kitchen-shopping',  label: 'Shop',    icon: 'ShoppingCart', route: '/kitchen/shopping' },
+    ],
+    theme: {
+      sidebar_bg: '#15100b',
+      sidebar_text: '#eddec8',
+      sidebar_active_bg: '#271d12',
+      accent: '#c8935a',
+    },
+    custom_sidebar: KitchenSidebar,
+  })
+
   // --- Panels (workshop home) ---
   registerPanel('kitchen-stock-overview',   KitchenStockOverview)
   registerPanel('kitchen-can-make-tonight', KitchenCanMakeTonight)
@@ -30,7 +58,9 @@ export function registerKitchenModule(): void {
   registerPanel('kitchen-meal-plan-today',  KitchenMealPlanToday)
   registerPanel('kitchen-recently-cooked',  KitchenRecentlyCooked)
 
-  // --- Views (routes match manifest.json views[].route) ---
+  // --- Views (routes — includes legacy location views + new app mode views) ---
+  registerView('/kitchen',                  KitchenHome)
+  registerView('/kitchen/larder',           KitchenLarder)
   registerView('/kitchen/pantry',           KitchenPantry)
   registerView('/kitchen/fridge',           KitchenFridge)
   registerView('/kitchen/freezer',          KitchenFreezer)
