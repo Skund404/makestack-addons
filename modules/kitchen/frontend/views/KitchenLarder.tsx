@@ -2,46 +2,89 @@
  * KitchenLarder — three-column stock view (Pantry / Fridge / Freezer).
  *
  * Matches the mockup's Larder screen with color-coded column headers,
- * search bar, and slide-out add-item panel.
+ * search bar, expiry badges, and slide-out add-item panel.
  */
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2, Plus, X } from 'lucide-react'
-import { apiGet } from '@/lib/api'
-
-interface StockItem {
-  id: string
-  name: string
-  quantity: number
-  unit: string
-  location: string
-  expiry_date?: string | null
-}
-
-interface StockResponse {
-  items: StockItem[]
-  total: number
-}
+import { kitchenApi, nameFromPath, fmtQty } from '../api'
+import type { KitchenStockList, KitchenStockItem } from '../api'
 
 const COLUMNS = [
-  { key: 'pantry',  label: 'Pantry',  color: '#BA7517', headerClass: 'border-t-[3px]' },
-  { key: 'fridge',  label: 'Fridge',  color: '#888780', headerClass: 'border-t-[3px]' },
-  { key: 'freezer', label: 'Freezer', color: '#378ADD', headerClass: 'border-t-[3px]' },
+  { key: 'pantry',  label: 'Pantry',  color: '#BA7517' },
+  { key: 'fridge',  label: 'Fridge',  color: '#888780' },
+  { key: 'freezer', label: 'Freezer', color: '#378ADD' },
 ] as const
+
+function expiryBadge(expiryDate: string | null) {
+  if (!expiryDate) return null
+  const days = Math.ceil((new Date(expiryDate).getTime() - Date.now()) / 86400000)
+  if (days < 0) return <span className="text-[9px] font-medium px-1 py-px rounded-full" style={{ color: '#ef4444', backgroundColor: '#ef444415' }}>expired</span>
+  if (days <= 1) return <span className="text-[9px] font-medium px-1 py-px rounded-full" style={{ color: '#ef4444', backgroundColor: '#ef444415' }}>{days === 0 ? 'today' : '1d'}</span>
+  if (days <= 3) return <span className="text-[9px] font-medium px-1 py-px rounded-full" style={{ color: '#f97316', backgroundColor: '#f9731615' }}>{days}d</span>
+  if (days <= 7) return <span className="text-[9px] font-medium px-1 py-px rounded-full" style={{ color: '#9ca3af', backgroundColor: '#9ca3af15' }}>{days}d</span>
+  return null
+}
+
+const LOCATIONS = [
+  { value: 'pantry', label: 'Pantry' },
+  { value: 'fridge', label: 'Fridge' },
+  { value: 'freezer', label: 'Freezer' },
+]
 
 export function KitchenLarder() {
   const [search, setSearch] = useState('')
   const [addPanelOpen, setAddPanelOpen] = useState(false)
+  const queryClient = useQueryClient()
+
+  // Form state
+  const [formName, setFormName] = useState('')
+  const [formQty, setFormQty] = useState('1')
+  const [formUnit, setFormUnit] = useState('')
+  const [formLocation, setFormLocation] = useState('pantry')
+  const [formExpiry, setFormExpiry] = useState('')
+  const [formSaving, setFormSaving] = useState(false)
 
   const { data, isLoading } = useQuery({
     queryKey: ['kitchen-stock-all'],
-    queryFn: () => apiGet<StockResponse>('/modules/kitchen/stock'),
+    queryFn: () => kitchenApi.listStock({ limit: 500 }),
     staleTime: 30_000,
   })
 
-  const items = (data?.items ?? []).filter((item) =>
-    !search || item.name.toLowerCase().includes(search.toLowerCase()),
-  )
+  const items = (data?.items ?? []).filter((item) => {
+    if (!search) return true
+    const name = nameFromPath(item.catalogue_path)
+    return name.toLowerCase().includes(search.toLowerCase())
+  })
+
+  const resetForm = () => {
+    setFormName('')
+    setFormQty('1')
+    setFormUnit('')
+    setFormLocation('pantry')
+    setFormExpiry('')
+  }
+
+  const handleAddItem = async () => {
+    if (!formName.trim()) return
+    setFormSaving(true)
+    try {
+      await kitchenApi.addStockItem({
+        name: formName.trim(),
+        quantity: parseFloat(formQty) || 1,
+        unit: formUnit,
+        location: formLocation,
+        expiry_date: formExpiry || undefined,
+      })
+      await queryClient.invalidateQueries({ queryKey: ['kitchen-stock-all'] })
+      resetForm()
+      setAddPanelOpen(false)
+    } catch {
+      // silently fail — user can retry
+    } finally {
+      setFormSaving(false)
+    }
+  }
 
   return (
     <div className="flex flex-col h-full">
@@ -81,7 +124,7 @@ export function KitchenLarder() {
             <span className="text-xs">Loading stock...</span>
           </div>
         ) : (
-          COLUMNS.map((col, i) => {
+          COLUMNS.map((col) => {
             const colItems = items.filter((item) => item.location === col.key)
             return (
               <div
@@ -111,10 +154,11 @@ export function KitchenLarder() {
                         key={item.id}
                         className="flex items-center gap-2 px-3 py-2 border-b border-border/50"
                       >
-                        <span className="flex-1 text-xs text-text truncate">{item.name}</span>
+                        <span className="flex-1 text-xs text-text truncate">{nameFromPath(item.catalogue_path)}</span>
                         <span className="text-[11px] text-text-faint shrink-0">
-                          {item.quantity} {item.unit}
+                          {fmtQty(item.quantity, item.unit)}
                         </span>
+                        {expiryBadge(item.expiry_date)}
                       </div>
                     ))
                   )}
@@ -126,7 +170,7 @@ export function KitchenLarder() {
 
         {/* Add item slide-out panel */}
         <div
-          className="absolute right-0 top-0 bottom-0 w-60 flex flex-col border-l border-border bg-surface shadow-lg transition-transform duration-200"
+          className="absolute right-0 top-0 bottom-0 w-64 flex flex-col border-l border-border bg-surface shadow-lg transition-transform duration-200"
           style={{ transform: addPanelOpen ? 'translateX(0)' : 'translateX(100%)' }}
         >
           <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0">
@@ -135,9 +179,81 @@ export function KitchenLarder() {
               <X size={14} />
             </button>
           </div>
-          <div className="flex-1 overflow-y-auto p-3">
-            <p className="text-xs text-text-faint italic">
-              Add item form — coming in kitchen frontend rebuild.
+          <div className="flex-1 overflow-y-auto p-3 space-y-3">
+            {/* Name */}
+            <div>
+              <label className="block text-[10px] font-medium text-text-faint mb-1">Name</label>
+              <input
+                type="text"
+                value={formName}
+                onChange={(e) => setFormName(e.target.value)}
+                placeholder="e.g. Flour"
+                className="w-full px-2.5 py-1.5 text-xs rounded border border-border bg-bg text-text placeholder:text-text-faint focus:outline-none focus:border-accent/50"
+              />
+            </div>
+
+            {/* Quantity + Unit */}
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <label className="block text-[10px] font-medium text-text-faint mb-1">Qty</label>
+                <input
+                  type="number"
+                  value={formQty}
+                  onChange={(e) => setFormQty(e.target.value)}
+                  min="0"
+                  step="any"
+                  className="w-full px-2.5 py-1.5 text-xs rounded border border-border bg-bg text-text focus:outline-none focus:border-accent/50"
+                />
+              </div>
+              <div className="flex-1">
+                <label className="block text-[10px] font-medium text-text-faint mb-1">Unit</label>
+                <input
+                  type="text"
+                  value={formUnit}
+                  onChange={(e) => setFormUnit(e.target.value)}
+                  placeholder="g, ml, piece"
+                  className="w-full px-2.5 py-1.5 text-xs rounded border border-border bg-bg text-text placeholder:text-text-faint focus:outline-none focus:border-accent/50"
+                />
+              </div>
+            </div>
+
+            {/* Location */}
+            <div>
+              <label className="block text-[10px] font-medium text-text-faint mb-1">Location</label>
+              <select
+                value={formLocation}
+                onChange={(e) => setFormLocation(e.target.value)}
+                className="w-full px-2.5 py-1.5 text-xs rounded border border-border bg-bg text-text focus:outline-none focus:border-accent/50"
+              >
+                {LOCATIONS.map((loc) => (
+                  <option key={loc.value} value={loc.value}>{loc.label}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Expiry date */}
+            <div>
+              <label className="block text-[10px] font-medium text-text-faint mb-1">Expiry date</label>
+              <input
+                type="date"
+                value={formExpiry}
+                onChange={(e) => setFormExpiry(e.target.value)}
+                className="w-full px-2.5 py-1.5 text-xs rounded border border-border bg-bg text-text focus:outline-none focus:border-accent/50"
+              />
+            </div>
+
+            {/* Save button */}
+            <button
+              onClick={handleAddItem}
+              disabled={!formName.trim() || formSaving}
+              className="w-full px-3 py-2 text-xs font-medium rounded transition-colors disabled:opacity-50"
+              style={{ backgroundColor: '#c8935a', color: '#15100b' }}
+            >
+              {formSaving ? 'Saving...' : 'Add to larder'}
+            </button>
+
+            <p className="text-[10px] text-text-faint italic mt-2">
+              Custom fields — coming soon
             </p>
           </div>
         </div>

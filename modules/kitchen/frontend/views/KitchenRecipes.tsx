@@ -1,127 +1,227 @@
 /**
- * Kitchen Recipes view — recipe library with filters.
+ * KitchenRecipes — two-pane recipe browser.
+ *
+ * Left: scrollable recipe list with status dots (green=ready, amber=1 missing, red=>1).
+ * Right: selected recipe detail with stock-check per ingredient.
  */
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Loader2, AlertCircle, BookOpen, Clock } from 'lucide-react'
-import { useNavigate } from '@tanstack/react-router'
-import { Badge } from '@/components/ui/Badge'
-import { Button } from '@/components/ui/Button'
-import { Input } from '@/components/ui/Input'
-import { Card, CardBody } from '@/components/ui/Card'
-import { kitchenApi } from '../api'
-import type { RecipeListItem } from '../api'
+import { Loader2, Clock, Users } from 'lucide-react'
+import { kitchenApi, fmtQty } from '../api'
+import type { CanMakeResponse, CanMakeResult } from '../api'
 
-const PAGE_SIZE = 20
-
-function RecipeCard({
-  recipe,
-  onClick,
-}: {
-  recipe: RecipeListItem
-  onClick: () => void
-}) {
-  return (
-    <Card hoverable onClick={onClick}>
-      <CardBody className="space-y-1.5">
-        <div className="flex items-start justify-between gap-2">
-          <h3 className="text-sm font-semibold text-text leading-tight">{recipe.title}</h3>
-          {recipe.cuisine_tag && <Badge variant="muted">{recipe.cuisine_tag}</Badge>}
-        </div>
-        <div className="flex items-center gap-3 text-xs text-text-faint">
-          {recipe.total_time_mins != null && (
-            <span className="flex items-center gap-1">
-              <Clock size={10} />
-              {recipe.total_time_mins}min
-            </span>
-          )}
-          <span>{recipe.servings} serving{recipe.servings !== 1 ? 's' : ''}</span>
-          {recipe.cook_count > 0 && (
-            <span>Cooked {recipe.cook_count}×</span>
-          )}
-        </div>
-      </CardBody>
-    </Card>
-  )
+function statusColor(recipe: { can_make: boolean; missing_count: number }): string {
+  if (recipe.can_make) return '#22c55e'        // green
+  if (recipe.missing_count === 1) return '#f59e0b' // amber
+  return '#ef4444'                               // red
 }
 
 export function KitchenRecipes() {
-  const navigate = useNavigate()
-  const [search, setSearch] = useState('')
-  const [offset, setOffset] = useState(0)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
 
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ['kitchen-recipes', search, offset],
-    queryFn: () => kitchenApi.listRecipes({ search: search || undefined, limit: PAGE_SIZE, offset }),
+  // Fetch all recipes with can-make status (relaxed — includes up to 1 missing)
+  const { data: canMakeData, isLoading } = useQuery({
+    queryKey: ['kitchen-recipes-canmake'],
+    queryFn: () => kitchenApi.canMake(false, 200),
     staleTime: 60_000,
   })
 
-  const items = data?.items ?? []
-  const total = data?.total ?? 0
-  const totalPages = Math.ceil(total / PAGE_SIZE)
-  const currentPage = Math.floor(offset / PAGE_SIZE) + 1
+  // Also fetch full recipe list for recipes that may have no ingredients (won't appear in can-make)
+  const { data: allRecipes } = useQuery({
+    queryKey: ['kitchen-recipes-all'],
+    queryFn: () => kitchenApi.listRecipes({ limit: 200 }),
+    staleTime: 60_000,
+  })
+
+  // Merge: can-make data keyed by recipe_id, fallback to recipe list
+  const canMakeMap = new Map<string, CanMakeResult>()
+  for (const r of canMakeData?.recipes ?? []) {
+    canMakeMap.set(r.recipe_id, r)
+  }
+
+  // Build unified list: all recipes, enriched with can-make data
+  const recipes = (allRecipes?.items ?? []).map((r) => {
+    const cm = canMakeMap.get(r.id)
+    return {
+      id: r.id,
+      title: r.title,
+      cuisine_tag: r.cuisine_tag,
+      total_time_mins: r.total_time_mins,
+      servings: r.servings,
+      can_make: cm?.can_make ?? false,
+      missing_count: cm?.missing_count ?? 0,
+    }
+  })
+
+  const selected = selectedId ?? null
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 pt-4 pb-2">
-        <div className="flex items-center gap-2">
-          <BookOpen size={16} className="text-text-muted" />
-          <h1 className="text-base font-semibold text-text">Recipes</h1>
-          <span className="text-xs text-text-faint">{total}</span>
+    <div className="flex h-full">
+      {/* Left pane — recipe list */}
+      <div className="w-56 shrink-0 border-r border-border flex flex-col bg-surface">
+        <div className="px-3 py-2.5 border-b border-border">
+          <h2
+            className="text-lg"
+            style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+          >
+            Recipes
+          </h2>
+          <p className="text-[10px] text-text-faint">{recipes.length} recipes</p>
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8 text-text-muted gap-2">
+              <Loader2 size={12} className="animate-spin" />
+              <span className="text-xs">Loading...</span>
+            </div>
+          ) : recipes.length === 0 ? (
+            <p className="text-xs text-text-faint italic p-3">No recipes yet</p>
+          ) : (
+            recipes.map((r) => {
+              const isSelected = r.id === selected
+              return (
+                <button
+                  key={r.id}
+                  onClick={() => setSelectedId(r.id)}
+                  className="w-full text-left px-3 py-2.5 border-b border-border/50 transition-colors cursor-pointer"
+                  style={{
+                    backgroundColor: isSelected ? 'var(--bg-secondary, #1a1a1a)' : 'transparent',
+                    borderLeft: isSelected ? '2px solid var(--accent, #c8935a)' : '2px solid transparent',
+                  }}
+                >
+                  <div className="flex items-center gap-2">
+                    {/* Status dot */}
+                    <span
+                      className="w-2 h-2 rounded-full shrink-0"
+                      style={{ backgroundColor: statusColor(r) }}
+                    />
+                    <span className="text-xs text-text font-medium truncate flex-1">{r.title}</span>
+                  </div>
+                  <div className="flex items-center gap-2 mt-0.5 ml-4 text-[10px] text-text-faint">
+                    {r.total_time_mins != null && <span>{r.total_time_mins}min</span>}
+                    {r.cuisine_tag && <span>{r.cuisine_tag}</span>}
+                  </div>
+                </button>
+              )
+            })
+          )}
         </div>
       </div>
 
-      <div className="px-4 pb-3">
-        <Input
-          placeholder="Search recipes…"
-          value={search}
-          onChange={(e) => { setSearch(e.target.value); setOffset(0) }}
-          className="max-w-xs"
-        />
-      </div>
-
-      <div className="flex-1 overflow-y-auto px-4 pb-4">
-        {isLoading && (
-          <div className="flex items-center justify-center py-16 text-text-muted gap-2">
-            <Loader2 size={16} className="animate-spin" /> Loading…
+      {/* Right pane — recipe detail */}
+      <div className="flex-1 overflow-y-auto bg-secondary">
+        {!selected ? (
+          <div className="flex items-center justify-center h-full text-text-faint text-sm">
+            Select a recipe
           </div>
-        )}
-        {isError && (
-          <div className="flex items-center justify-center py-16 text-danger/70 gap-2">
-            <AlertCircle size={16} /> Failed to load recipes.
-          </div>
-        )}
-        {!isLoading && !isError && items.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-16 gap-3 text-text-faint">
-            <BookOpen size={24} className="opacity-30" />
-            <p className="text-sm">{search ? 'No recipes match that search.' : 'No recipes yet.'}</p>
-          </div>
-        )}
-        {!isLoading && !isError && items.length > 0 && (
-          <div className="space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {items.map((recipe) => (
-                <RecipeCard
-                  key={recipe.id}
-                  recipe={recipe}
-                  onClick={() => void navigate({ to: '/kitchen/recipes/$id', params: { id: recipe.id } })}
-                />
-              ))}
-            </div>
-            {totalPages > 1 && (
-              <div className="flex items-center justify-center gap-2 pt-2">
-                <Button variant="ghost" size="sm" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}>
-                  Previous
-                </Button>
-                <span className="text-xs text-text-faint">{currentPage} / {totalPages}</span>
-                <Button variant="ghost" size="sm" disabled={offset + PAGE_SIZE >= total} onClick={() => setOffset(offset + PAGE_SIZE)}>
-                  Next
-                </Button>
-              </div>
-            )}
-          </div>
+        ) : (
+          <RecipeDetailPane recipeId={selected} />
         )}
       </div>
     </div>
+  )
+}
+
+function RecipeDetailPane({ recipeId }: { recipeId: string }) {
+  const { data: recipe, isLoading } = useQuery({
+    queryKey: ['kitchen-recipe', recipeId],
+    queryFn: () => kitchenApi.getRecipe(recipeId),
+    staleTime: 60_000,
+  })
+
+  const { data: stockCheck } = useQuery({
+    queryKey: ['kitchen-stock-check', recipeId],
+    queryFn: () => kitchenApi.stockCheck(recipeId),
+    staleTime: 60_000,
+    enabled: !!recipe,
+  })
+
+  if (isLoading || !recipe) {
+    return (
+      <div className="flex items-center justify-center py-12 text-text-muted gap-2">
+        <Loader2 size={14} className="animate-spin" />
+        <span className="text-xs">Loading...</span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="p-5 max-w-xl">
+      {/* Title */}
+      <h1
+        className="text-[25px] mb-2 leading-tight"
+        style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+      >
+        {recipe.title}
+      </h1>
+
+      {/* Meta badges */}
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        {recipe.total_time_mins != null && (
+          <MetaBadge>
+            <Clock size={10} /> {recipe.total_time_mins}min
+          </MetaBadge>
+        )}
+        <MetaBadge>
+          <Users size={10} /> {recipe.servings}
+        </MetaBadge>
+        {recipe.cuisine_tag && <MetaBadge>{recipe.cuisine_tag}</MetaBadge>}
+        {stockCheck && (
+          <span
+            className="text-[10px] font-medium px-2 py-0.5 rounded-full"
+            style={{
+              color: stockCheck.can_make ? '#22c55e' : '#ef4444',
+              backgroundColor: stockCheck.can_make ? '#22c55e15' : '#ef444415',
+            }}
+          >
+            {stockCheck.can_make ? 'Can make' : `Missing ${stockCheck.missing_count}`}
+          </span>
+        )}
+      </div>
+
+      {recipe.description && (
+        <p className="text-sm text-text-muted mb-4">{recipe.description}</p>
+      )}
+
+      {/* Ingredients */}
+      {recipe.ingredients.length > 0 && (
+        <div className="mb-4">
+          <h3 className="text-[10px] font-medium uppercase tracking-wider text-text-faint mb-2">Ingredients</h3>
+          <div className="space-y-1.5">
+            {recipe.ingredients.map((ing) => {
+              const stockIng = stockCheck?.ingredients.find((i) => i.catalogue_path === ing.catalogue_path)
+              const isMissing = stockIng && stockIng.status !== 'ok'
+              return (
+                <div key={ing.id} className="flex items-center gap-2 text-sm">
+                  <span className="flex-1 text-text">{ing.name}</span>
+                  <span className="text-text-muted font-mono text-xs">{fmtQty(ing.quantity, ing.unit)}</span>
+                  {isMissing && (
+                    <span className="text-[9px] font-medium px-1.5 py-px rounded-full" style={{ color: '#ef4444', backgroundColor: '#ef444415' }}>
+                      {stockIng.status === 'low' ? 'Low' : 'Missing'}
+                    </span>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Notes */}
+      {recipe.notes && (
+        <div>
+          <h3 className="text-[10px] font-medium uppercase tracking-wider text-text-faint mb-1">Notes</h3>
+          <p className="text-sm text-text-muted whitespace-pre-line">{recipe.notes}</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function MetaBadge({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="flex items-center gap-1 text-[10px] text-text-muted px-2 py-0.5 rounded-full bg-surface border border-border">
+      {children}
+    </span>
   )
 }

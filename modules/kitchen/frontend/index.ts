@@ -19,7 +19,6 @@ import { KitchenMealPlanToday } from './panels/KitchenMealPlanToday'
 import { KitchenRecentlyCooked } from './panels/KitchenRecentlyCooked'
 import { KitchenHome } from './views/KitchenHome'
 import { KitchenLarder } from './views/KitchenLarder'
-import { KitchenPantry, KitchenFridge, KitchenFreezer } from './views/KitchenStockView'
 import { KitchenRecipes } from './views/KitchenRecipes'
 import { KitchenRecipeDetail } from './views/KitchenRecipeDetail'
 import { KitchenMealPlan } from './views/KitchenMealPlan'
@@ -58,12 +57,9 @@ export function registerKitchenModule(): void {
   registerPanel('kitchen-meal-plan-today',  KitchenMealPlanToday)
   registerPanel('kitchen-recently-cooked',  KitchenRecentlyCooked)
 
-  // --- Views (routes — includes legacy location views + new app mode views) ---
+  // --- Views (routes) ---
   registerView('/kitchen',                  KitchenHome)
   registerView('/kitchen/larder',           KitchenLarder)
-  registerView('/kitchen/pantry',           KitchenPantry)
-  registerView('/kitchen/fridge',           KitchenFridge)
-  registerView('/kitchen/freezer',          KitchenFreezer)
   registerView('/kitchen/recipes',          KitchenRecipes)
   registerView('/kitchen/recipes/:id',      KitchenRecipeDetail)
   registerView('/kitchen/meal-plan',        KitchenMealPlan)

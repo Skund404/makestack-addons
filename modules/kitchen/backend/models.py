@@ -265,3 +265,53 @@ class StockCheckResult(BaseModel):
 class CanMakeResult(BaseModel):
     recipes: list[StockCheckResult]
     total: int
+
+
+# ---------------------------------------------------------------------------
+# Persistent shopping list
+# ---------------------------------------------------------------------------
+
+
+class ShoppingItemCreate(BaseModel):
+    name: str
+    catalogue_path: str | None = None
+    quantity: float = 1
+    unit: str = ""
+    source: str = "manual"
+    source_recipe_id: str | None = None
+    note: str = ""
+
+
+class ShoppingItemUpdate(BaseModel):
+    checked: bool | None = None
+    quantity: float | None = None
+    note: str | None = None
+
+
+class ShoppingItemResponse(BaseModel):
+    id: str
+    name: str
+    catalogue_path: str | None
+    quantity: float
+    unit: str
+    source: str
+    source_recipe_id: str | None
+    checked: bool
+    note: str
+    created_at: str
+    updated_at: str
+
+
+# ---------------------------------------------------------------------------
+# Stock item creation (single item via peer)
+# ---------------------------------------------------------------------------
+
+
+class StockItemCreate(BaseModel):
+    catalogue_path: str | None = None
+    name: str = ""
+    quantity: float = 1
+    unit: str = ""
+    location: str = "pantry"
+    expiry_date: str | None = None
+    notes: str = ""

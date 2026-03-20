@@ -31,7 +31,8 @@
     { "name": "kitchen_cook_log",             "description": "Cooking session log with rating and stock deduction flag" },
     { "name": "kitchen_locations",            "description": "Location configuration: pantry, fridge, freezer, other" },
     { "name": "kitchen_stock_aliases",        "description": "Receipt text to catalogue path mappings for bulk import" },
-    { "name": "kitchen_stock_metadata",       "description": "Expiry date and frozen-on date per stock item (extends inventory-stock)" }
+    { "name": "kitchen_stock_metadata",       "description": "Expiry date and frozen-on date per stock item (extends inventory-stock)" },
+    { "name": "kitchen_shopping_list",       "description": "Persistent shopping list — manual and recipe-derived items with checked state" }
   ],
 
   "api_endpoints": [
@@ -57,16 +58,25 @@
     { "method": "GET",  "path": "/meal-plan/{week}/shopping-list", "name": "get_shopping_list",      "description": "Required ingredients for the week minus current stock" },
 
     { "method": "POST", "path": "/cook-log",                       "name": "record_cook_session",    "description": "Record a cooking session (auto-deducts stock via inventory-stock peer)" },
-    { "method": "GET",  "path": "/cook-log",                       "name": "list_cook_log",          "description": "List cooking sessions with optional filters: recipe_id, date range, rating" }
+    { "method": "GET",  "path": "/cook-log",                       "name": "list_cook_log",          "description": "List cooking sessions with optional filters: recipe_id, date range, rating" },
+
+    { "method": "GET",    "path": "/shopping",                       "name": "list_shopping",          "description": "List persistent shopping list items (tab=buy for unchecked only)" },
+    { "method": "POST",   "path": "/shopping",                       "name": "add_shopping_item",      "description": "Add a manual item to the persistent shopping list" },
+    { "method": "POST",   "path": "/shopping/from-recipe/{recipe_id}","name": "add_recipe_to_shopping","description": "Stock-check recipe and add missing ingredients to shopping list" },
+    { "method": "POST",   "path": "/shopping/clear-checked",         "name": "clear_checked_shopping", "description": "Delete all checked shopping list items" },
+    { "method": "GET",    "path": "/shopping/badge",                  "name": "get_shopping_badge",     "description": "Count of unchecked shopping list items (for badge display)" },
+    { "method": "PUT",    "path": "/shopping/{item_id}",              "name": "update_shopping_item",   "description": "Toggle checked, update quantity or note on a shopping item" },
+    { "method": "DELETE", "path": "/shopping/{item_id}",              "name": "delete_shopping_item",   "description": "Remove a single shopping list item" },
+    { "method": "POST",   "path": "/stock/add",                       "name": "add_stock_item",         "description": "Create a single stock item via inventory-stock peer with optional metadata" }
   ],
 
   "views": [
-    { "id": "kitchen-pantry",        "label": "Pantry",         "route": "/kitchen/pantry",        "icon": "Archive",     "sort_order": 0 },
-    { "id": "kitchen-fridge",        "label": "Fridge",         "route": "/kitchen/fridge",        "icon": "Thermometer", "sort_order": 1 },
-    { "id": "kitchen-freezer",       "label": "Freezer",        "route": "/kitchen/freezer",       "icon": "Snowflake",   "sort_order": 2 },
-    { "id": "kitchen-recipes",       "label": "Recipes",        "route": "/kitchen/recipes",       "icon": "BookOpen",    "sort_order": 3 },
+    { "id": "kitchen-home",          "label": "Home",           "route": "/kitchen",               "icon": "Home",        "sort_order": 0 },
+    { "id": "kitchen-larder",        "label": "Larder",         "route": "/kitchen/larder",        "icon": "Archive",     "sort_order": 1 },
+    { "id": "kitchen-recipes",       "label": "Recipes",        "route": "/kitchen/recipes",       "icon": "BookOpen",    "sort_order": 2 },
+    { "id": "kitchen-recipe-detail", "label": "Recipe Detail",  "route": "/kitchen/recipes/:id",   "icon": "BookOpen",    "sort_order": 3 },
     { "id": "kitchen-meal-plan",     "label": "Meal Plan",      "route": "/kitchen/meal-plan",     "icon": "Calendar",    "sort_order": 4 },
-    { "id": "kitchen-shopping-list", "label": "Shopping List",  "route": "/kitchen/shopping",      "icon": "ShoppingCart","sort_order": 5 },
+    { "id": "kitchen-shopping",      "label": "Shop",           "route": "/kitchen/shopping",      "icon": "ShoppingCart","sort_order": 5 },
     { "id": "kitchen-cook-log",      "label": "Cook Log",       "route": "/kitchen/cook-log",      "icon": "ClipboardList","sort_order": 6 }
   ],
 

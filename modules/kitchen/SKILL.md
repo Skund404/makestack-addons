@@ -187,7 +187,38 @@ Use this flow when the user asks what to buy for the week.
 
 ---
 
-## 8. Nutrition Queries
+## 8. Shopping List Management
+
+The kitchen has two shopping list systems:
+- **Meal-plan-derived** (`kitchen__get_shopping_list`) — auto-calculated shortfalls for a week
+- **Persistent** (`kitchen__list_shopping`) — manually curated buy-list with checkboxes
+
+### Adding items
+
+- **Manual item** — call `kitchen__add_shopping_item` with `name`, `quantity`,
+  `unit`, and optionally `catalogue_path` if known.
+
+- **From recipe** — call `kitchen__add_recipe_to_shopping` with the `recipe_id`.
+  This stock-checks the recipe and adds only missing ingredients. Deduplicates
+  against existing unchecked items by catalogue_path and name.
+
+### Managing the list
+
+- **Check off** — call `kitchen__update_shopping_item` with `{ checked: true }`.
+- **Uncheck** — call `kitchen__update_shopping_item` with `{ checked: false }`.
+- **Clear done** — call `kitchen__clear_checked_shopping` to delete all checked items.
+- **Badge count** — call `kitchen__get_shopping_badge` to get the number of unchecked items.
+- **Delete** — call `kitchen__delete_shopping_item` to remove a single item.
+
+### Adding stock after shopping
+
+After the user has bought items, use `kitchen__add_stock_item` to create
+individual stock entries, or `kitchen__bulk_update_stock` for batch receipt
+processing. Then check off the corresponding shopping list items.
+
+---
+
+## 9. Nutrition Queries
 
 Nutrition data is always read from stored records. Never estimate or fabricate
 nutritional values.
@@ -211,7 +242,7 @@ nutritional values.
 
 ---
 
-## 9. Unit Handling
+## 10. Unit Handling
 
 The kitchen module normalises mass and volume quantities to base units for
 stock comparison and shopping list aggregation:
@@ -230,7 +261,7 @@ notations.
 
 ---
 
-## 10. What Claude Must Never Do
+## 11. What Claude Must Never Do
 
 | Prohibited | Reason | Correct alternative |
 |---|---|---|
@@ -254,6 +285,18 @@ notations.
 | `kitchen__get_expiring_soon` | GET /stock/expiring | Items expiring within N days |
 | `kitchen__lookup_alias` | GET /stock/aliases/lookup | Resolve receipt text → catalogue_path |
 | `kitchen__save_alias` | POST /stock/aliases | Save receipt text alias |
+| `kitchen__add_stock_item` | POST /stock/add | Create single stock item via peer |
+
+### Shopping List
+| Tool | Endpoint | Description |
+|---|---|---|
+| `kitchen__list_shopping` | GET /shopping | List persistent shopping items |
+| `kitchen__add_shopping_item` | POST /shopping | Add manual item |
+| `kitchen__add_recipe_to_shopping` | POST /shopping/from-recipe/{id} | Add missing recipe ingredients |
+| `kitchen__clear_checked_shopping` | POST /shopping/clear-checked | Delete checked items |
+| `kitchen__get_shopping_badge` | GET /shopping/badge | Unchecked item count |
+| `kitchen__update_shopping_item` | PUT /shopping/{id} | Toggle checked / update qty |
+| `kitchen__delete_shopping_item` | DELETE /shopping/{id} | Remove single item |
 
 ### Recipes
 | Tool | Endpoint | Description |

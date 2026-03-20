@@ -59,6 +59,9 @@ MealPlanEntryCreate = _m.MealPlanEntryCreate
 CookLogCreate = _m.CookLogCreate
 BulkStockItem = _m.BulkStockItem
 StockAliasCreate = _m.StockAliasCreate
+ShoppingItemCreate = _m.ShoppingItemCreate
+ShoppingItemUpdate = _m.ShoppingItemUpdate
+StockItemCreate = _m.StockItemCreate
 
 # Nutrition calculator
 calculate_recipe_nutrition = _n.calculate_recipe_nutrition
@@ -87,6 +90,7 @@ get_db = get_module_userdb_factory(
         "kitchen_locations",
         "kitchen_stock_aliases",
         "kitchen_stock_metadata",
+        "kitchen_shopping_list",
         "inventory_stock_items",  # read-only; declared in manifest read_tables
         "inventory",              # Shell-core table; needed for catalogue_path JOIN
     ],
@@ -633,8 +637,10 @@ async def _get_or_create_plan(db: ModuleUserDB, week: str) -> dict:
 
 async def _plan_with_entries(db: ModuleUserDB, plan: dict) -> dict:
     entries = await db.fetch_all(
-        "SELECT * FROM kitchen_meal_plan_entries WHERE plan_id = ? "
-        "ORDER BY day_of_week, meal_slot",
+        "SELECT e.*, r.title AS recipe_title "
+        "FROM kitchen_meal_plan_entries e "
+        "LEFT JOIN kitchen_recipes r ON e.recipe_id = r.id "
+        "WHERE e.plan_id = ? ORDER BY e.day_of_week, e.meal_slot",
         [plan["id"]],
     )
     result = dict(plan)
@@ -870,6 +876,278 @@ async def list_cook_log(
         items.append(d)
 
     return {"items": items, "total": total, "limit": limit, "offset": offset}
+
+
+# ---------------------------------------------------------------------------
+# Shopping list endpoints (persistent)
+# IMPORTANT: static sub-paths MUST be declared BEFORE /shopping/{id}.
+# ---------------------------------------------------------------------------
+
+
+@router.get("/shopping")
+async def list_shopping(
+    tab: str | None = Query(None, description="'buy' to return unchecked only"),
+    db: ModuleUserDB = Depends(get_db),
+):
+    """List persistent shopping list items."""
+    where = "WHERE checked = 0" if tab == "buy" else ""
+    items = await db.fetch_all(
+        f"SELECT * FROM kitchen_shopping_list {where} ORDER BY created_at DESC"
+    )
+    total_row = await db.fetch_one(
+        "SELECT COUNT(*) AS n FROM kitchen_shopping_list"
+    )
+    buy_row = await db.fetch_one(
+        "SELECT COUNT(*) AS n FROM kitchen_shopping_list WHERE checked = 0"
+    )
+    return {
+        "items": [dict(r) for r in items],
+        "total": (total_row["n"] if total_row else 0) or 0,
+        "to_buy": (buy_row["n"] if buy_row else 0) or 0,
+    }
+
+
+@router.post("/shopping", status_code=201)
+async def add_shopping_item(
+    body: ShoppingItemCreate,
+    db: ModuleUserDB = Depends(get_db),
+):
+    """Add a manual item to the persistent shopping list."""
+    item_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+    await db.execute(
+        """
+        INSERT INTO kitchen_shopping_list
+            (id, name, catalogue_path, quantity, unit, source,
+             source_recipe_id, checked, note, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
+        """,
+        [
+            item_id, body.name, body.catalogue_path, body.quantity,
+            body.unit, body.source, body.source_recipe_id, body.note, now, now,
+        ],
+    )
+    row = await db.fetch_one(
+        "SELECT * FROM kitchen_shopping_list WHERE id = ?", [item_id]
+    )
+    return dict(row)
+
+
+@router.post("/shopping/from-recipe/{recipe_id}")
+async def add_recipe_to_shopping(
+    recipe_id: str,
+    db: ModuleUserDB = Depends(get_db),
+):
+    """Stock-check recipe, add missing ingredients to shopping list.
+
+    Deduplicates against existing unchecked items by (catalogue_path OR name).
+    """
+    recipe = await db.fetch_one(
+        "SELECT * FROM kitchen_recipes WHERE id = ?", [recipe_id]
+    )
+    if not recipe:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "Recipe not found",
+                "recipe_id": recipe_id,
+                "suggestion": "Use GET /recipes to list available recipes",
+            },
+        )
+
+    ingredients = await db.fetch_all(
+        f"""
+        SELECT i.name, i.catalogue_path, i.quantity, i.unit,
+               COALESCE(s.total_qty, 0) AS in_stock_qty
+        FROM kitchen_recipe_ingredients i
+        LEFT JOIN ({_STOCK_BY_PATH_SQL}) s ON s.catalogue_path = i.catalogue_path
+        WHERE i.recipe_id = ?
+        """,
+        [recipe_id],
+    )
+
+    # Fetch existing unchecked shopping items for dedup
+    existing = await db.fetch_all(
+        "SELECT name, catalogue_path FROM kitchen_shopping_list WHERE checked = 0"
+    )
+    existing_paths = {r["catalogue_path"] for r in existing if r["catalogue_path"]}
+    existing_names = {r["name"].lower() for r in existing}
+
+    added = 0
+    now = datetime.now(timezone.utc).isoformat()
+    for ing in ingredients:
+        if float(ing["in_stock_qty"]) > 0:
+            continue  # in stock — skip
+
+        # Dedup check
+        if ing["catalogue_path"] and ing["catalogue_path"] in existing_paths:
+            continue
+        if ing["name"].lower() in existing_names:
+            continue
+
+        await db.execute(
+            """
+            INSERT INTO kitchen_shopping_list
+                (id, name, catalogue_path, quantity, unit, source,
+                 source_recipe_id, checked, note, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, 'recipe', ?, 0, '', ?, ?)
+            """,
+            [
+                str(uuid.uuid4()), ing["name"], ing["catalogue_path"],
+                ing["quantity"], ing["unit"], recipe_id, now, now,
+            ],
+        )
+        added += 1
+
+    return {"added": added, "recipe_id": recipe_id, "recipe_title": recipe["title"]}
+
+
+@router.post("/shopping/clear-checked")
+async def clear_checked_shopping(db: ModuleUserDB = Depends(get_db)):
+    """Delete all checked (completed) shopping list items."""
+    count_row = await db.fetch_one(
+        "SELECT COUNT(*) AS n FROM kitchen_shopping_list WHERE checked = 1"
+    )
+    count = (count_row["n"] if count_row else 0) or 0
+    await db.execute("DELETE FROM kitchen_shopping_list WHERE checked = 1")
+    return {"deleted": count}
+
+
+@router.get("/shopping/badge")
+async def get_shopping_badge(db: ModuleUserDB = Depends(get_db)):
+    """Return count of unchecked shopping list items (for sidebar badge)."""
+    row = await db.fetch_one(
+        "SELECT COUNT(*) AS n FROM kitchen_shopping_list WHERE checked = 0"
+    )
+    return {"count": (row["n"] if row else 0) or 0}
+
+
+@router.put("/shopping/{item_id}")
+async def update_shopping_item(
+    item_id: str,
+    body: ShoppingItemUpdate,
+    db: ModuleUserDB = Depends(get_db),
+):
+    """Update a shopping list item (toggle checked, update qty/note)."""
+    existing = await db.fetch_one(
+        "SELECT id FROM kitchen_shopping_list WHERE id = ?", [item_id]
+    )
+    if not existing:
+        raise HTTPException(status_code=404, detail="Shopping item not found")
+
+    updates = body.model_dump(exclude_none=True)
+    if not updates:
+        row = await db.fetch_one(
+            "SELECT * FROM kitchen_shopping_list WHERE id = ?", [item_id]
+        )
+        return dict(row)
+
+    # Convert checked bool to int for SQLite
+    if "checked" in updates:
+        updates["checked"] = 1 if updates["checked"] else 0
+
+    updates["updated_at"] = datetime.now(timezone.utc).isoformat()
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    await db.execute(
+        f"UPDATE kitchen_shopping_list SET {set_clause} WHERE id = ?",
+        list(updates.values()) + [item_id],
+    )
+    row = await db.fetch_one(
+        "SELECT * FROM kitchen_shopping_list WHERE id = ?", [item_id]
+    )
+    return dict(row)
+
+
+@router.delete("/shopping/{item_id}")
+async def delete_shopping_item(
+    item_id: str,
+    db: ModuleUserDB = Depends(get_db),
+):
+    """Remove a single shopping list item."""
+    existing = await db.fetch_one(
+        "SELECT id FROM kitchen_shopping_list WHERE id = ?", [item_id]
+    )
+    if not existing:
+        raise HTTPException(status_code=404, detail="Shopping item not found")
+    await db.execute("DELETE FROM kitchen_shopping_list WHERE id = ?", [item_id])
+    return {"deleted": True, "id": item_id}
+
+
+# ---------------------------------------------------------------------------
+# POST /stock/add — create a single stock item via inventory-stock peer
+# ---------------------------------------------------------------------------
+
+
+@router.post("/stock/add", status_code=201)
+async def add_stock_item(
+    body: StockItemCreate,
+    db: ModuleUserDB = Depends(get_db),
+    peers: PeerModules = Depends(get_peer_modules),
+):
+    """Create a single stock item via inventory-stock peer.
+
+    If catalogue_path is provided, looks up the inventory pin. If not found,
+    the item cannot be created (inventory pin is a prerequisite).
+    If catalogue_path is absent, creates via peer with name only.
+    Optionally stores kitchen_stock_metadata if expiry_date is provided.
+    """
+    if not peers.is_installed("inventory-stock"):
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "inventory-stock peer not installed",
+                "suggestion": "Install the inventory-stock module first",
+            },
+        )
+
+    inv_id = None
+    if body.catalogue_path:
+        inv_row = await db.fetch_one(
+            "SELECT id FROM inventory WHERE catalogue_path = ?",
+            [body.catalogue_path],
+        )
+        if not inv_row:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error": "No inventory pin found for this catalogue_path",
+                    "catalogue_path": body.catalogue_path,
+                    "suggestion": "Use add_to_inventory to pin this catalogue entry first",
+                },
+            )
+        inv_id = inv_row["id"]
+
+    peer_body: dict = {
+        "quantity": body.quantity,
+        "unit": body.unit,
+        "location": body.location,
+        "notes": body.notes,
+    }
+    if inv_id:
+        peer_body["inventory_id"] = inv_id
+    if body.name and not inv_id:
+        peer_body["name"] = body.name
+
+    result = await peers.call(
+        "inventory-stock", "POST", "/stock", body=peer_body,
+    )
+
+    new_stock_id = result.get("id") if isinstance(result, dict) else None
+
+    if body.expiry_date and new_stock_id:
+        now = datetime.now(timezone.utc).isoformat()
+        await db.execute(
+            "INSERT INTO kitchen_stock_metadata "
+            "(id, stock_item_id, expiry_date, updated_at) VALUES (?, ?, ?, ?)",
+            [str(uuid.uuid4()), new_stock_id, body.expiry_date, now],
+        )
+
+    return {
+        "stock_item_id": new_stock_id,
+        "catalogue_path": body.catalogue_path,
+        "quantity": body.quantity,
+        "location": body.location,
+    }
 
 
 # ---------------------------------------------------------------------------

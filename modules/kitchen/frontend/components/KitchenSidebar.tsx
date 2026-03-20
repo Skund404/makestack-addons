@@ -35,20 +35,12 @@ export function KitchenSidebar({ config }: KitchenSidebarProps) {
     }
   }
 
-  // Fetch shopping list count for badge
+  // Fetch persistent shopping list badge count
   const { data: shoppingData } = useQuery({
     queryKey: ['kitchen-shopping-badge'],
     queryFn: async () => {
       try {
-        // Get current week's shopping list to count items
-        const now = new Date()
-        const day = now.getDay()
-        const diff = day === 0 ? -6 : 1 - day
-        const monday = new Date(now)
-        monday.setDate(now.getDate() + diff)
-        const weekKey = monday.toISOString().slice(0, 10)
-        const data = await apiGet<{ items: unknown[] }>(`/modules/kitchen/meal-plan/${weekKey}/shopping-list`)
-        return { count: data.items?.length ?? 0 }
+        return await apiGet<{ count: number }>('/modules/kitchen/shopping/badge')
       } catch {
         return { count: 0 }
       }

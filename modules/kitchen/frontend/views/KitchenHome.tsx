@@ -4,8 +4,9 @@
  * Shows today's meal plan cards and quick-look widgets (expiring, can-make, shopping summary).
  */
 import { useQuery } from '@tanstack/react-query'
-import { apiGet } from '@/lib/api'
 import { Loader2 } from 'lucide-react'
+import { kitchenApi, currentMondayISO, todayDow, nameFromPath } from '../api'
+import type { MealPlan, ExpiringItem, CanMakeResponse, PersistentShoppingListData } from '../api'
 
 function getGreeting(): string {
   const hour = new Date().getHours()
@@ -14,68 +15,47 @@ function getGreeting(): string {
   return 'Good evening'
 }
 
-function getTodayWeekKey(): string {
-  const now = new Date()
-  const day = now.getDay()
-  const diff = day === 0 ? -6 : 1 - day
-  const monday = new Date(now)
-  monday.setDate(now.getDate() + diff)
-  return monday.toISOString().slice(0, 10)
-}
-
 const MEAL_SLOTS = ['breakfast', 'lunch', 'dinner', 'snack'] as const
 
-interface MealPlanEntry {
-  slot: string
-  day: string
-  recipe_id: string | null
-  recipe_name: string | null
-  custom_text: string | null
-}
-
-interface MealPlanResponse {
-  id: string
-  week: string
-  entries: MealPlanEntry[]
-}
-
-interface ExpiringItem {
-  id: string
-  name: string
-  expiry_date: string
-  location: string
-}
-
-interface CanMakeRecipe {
-  id: string
-  name: string
-  cuisine_tag: string | null
+function expiryBadgeColor(daysUntil: number): string {
+  if (daysUntil <= 1) return '#ef4444' // red
+  if (daysUntil <= 3) return '#f97316' // orange
+  return 'var(--text-faint)'
 }
 
 export function KitchenHome() {
-  const weekKey = getTodayWeekKey()
-  const todayIso = new Date().toISOString().slice(0, 10)
-  const dayName = new Date().toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase()
+  const weekKey = currentMondayISO()
+  const dow = todayDow()
 
   const { data: mealPlan, isLoading: mpLoading } = useQuery({
     queryKey: ['kitchen-meal-plan', weekKey],
-    queryFn: () => apiGet<MealPlanResponse>(`/modules/kitchen/meal-plan/${weekKey}`),
+    queryFn: () => kitchenApi.getMealPlan(weekKey),
     staleTime: 60_000,
   })
 
   const { data: expiring } = useQuery({
     queryKey: ['kitchen-expiring-home'],
-    queryFn: () => apiGet<{ items: ExpiringItem[] }>('/modules/kitchen/stock/expiring', { days: 7 }),
+    queryFn: () => kitchenApi.listExpiring(7),
     staleTime: 60_000,
   })
 
   const { data: canMake } = useQuery({
     queryKey: ['kitchen-can-make-home'],
-    queryFn: () => apiGet<{ items: CanMakeRecipe[] }>('/modules/kitchen/recipes/can-make'),
+    queryFn: () => kitchenApi.canMake(false),
     staleTime: 60_000,
   })
 
-  const todayEntries = (mealPlan?.entries ?? []).filter((e) => e.day === dayName)
+  const { data: shoppingData } = useQuery({
+    queryKey: ['kitchen-shopping-home'],
+    queryFn: () => kitchenApi.listShopping('buy'),
+    staleTime: 60_000,
+  })
+
+  const todayEntries = (mealPlan?.entries ?? []).filter((e) => e.day_of_week === dow)
+
+  const expiringItems = expiring ?? []
+  const canMakeRecipes = canMake?.recipes ?? []
+  const shoppingItems = shoppingData?.items ?? []
 
   return (
     <div className="p-5 max-w-3xl">
@@ -99,12 +79,12 @@ export function KitchenHome() {
       ) : (
         <div className="grid grid-cols-4 gap-3 mb-6">
           {MEAL_SLOTS.map((slot) => {
-            const entry = todayEntries.find((e) => e.slot === slot)
+            const entry = todayEntries.find((e) => e.meal_slot === slot)
             return (
               <div key={slot} className="rounded-lg border border-border bg-surface p-3">
                 <p className="text-[9px] uppercase tracking-wider text-text-faint mb-1">{slot}</p>
                 <p className="text-xs font-medium text-text">
-                  {entry?.recipe_name ?? entry?.custom_text ?? <span className="italic text-text-faint">Not planned</span>}
+                  {entry?.recipe_title ?? entry?.free_text ?? <span className="italic text-text-faint">Not planned</span>}
                 </p>
               </div>
             )
@@ -117,13 +97,18 @@ export function KitchenHome() {
       <div className="grid grid-cols-3 gap-3">
         {/* Expiring soon */}
         <QuickCard title="Expiring Soon" linkLabel="View all" linkRoute="/kitchen/larder">
-          {(expiring?.items ?? []).length === 0 ? (
+          {expiringItems.length === 0 ? (
             <p className="text-xs text-text-faint italic">Nothing expiring soon</p>
           ) : (
-            (expiring?.items ?? []).slice(0, 4).map((item) => (
-              <div key={item.id} className="flex items-center justify-between py-1 border-b border-border/50 last:border-0">
-                <span className="text-xs text-text truncate">{item.name}</span>
-                <span className="text-[10px] text-text-faint shrink-0">{item.expiry_date}</span>
+            expiringItems.slice(0, 4).map((item) => (
+              <div key={item.stock_item_id} className="flex items-center justify-between py-1 border-b border-border/50 last:border-0">
+                <span className="text-xs text-text truncate">{nameFromPath(item.catalogue_path ?? '')}</span>
+                <span
+                  className="text-[10px] shrink-0 font-medium px-1.5 py-px rounded-full"
+                  style={{ color: expiryBadgeColor(item.days_until_expiry), backgroundColor: `${expiryBadgeColor(item.days_until_expiry)}15` }}
+                >
+                  {item.days_until_expiry <= 0 ? 'expired' : `${item.days_until_expiry}d`}
+                </span>
               </div>
             ))
           )}
@@ -131,13 +116,21 @@ export function KitchenHome() {
 
         {/* Can make tonight */}
         <QuickCard title="Can Make Tonight" linkLabel="View all" linkRoute="/kitchen/recipes">
-          {(canMake?.items ?? []).length === 0 ? (
+          {canMakeRecipes.length === 0 ? (
             <p className="text-xs text-text-faint italic">No recipes ready</p>
           ) : (
-            (canMake?.items ?? []).slice(0, 4).map((r) => (
-              <div key={r.id} className="flex items-center justify-between py-1 border-b border-border/50 last:border-0">
-                <span className="text-xs text-text truncate">{r.name}</span>
-                {r.cuisine_tag && <span className="text-[10px] text-text-faint shrink-0">{r.cuisine_tag}</span>}
+            canMakeRecipes.slice(0, 4).map((r) => (
+              <div key={r.recipe_id} className="flex items-center justify-between py-1 border-b border-border/50 last:border-0">
+                <span className="text-xs text-text truncate">{r.recipe_title}</span>
+                <span
+                  className="text-[10px] font-medium px-1.5 py-px rounded-full"
+                  style={{
+                    color: r.can_make ? '#22c55e' : '#f59e0b',
+                    backgroundColor: r.can_make ? '#22c55e15' : '#f59e0b15',
+                  }}
+                >
+                  {r.can_make ? 'ready' : `−${r.missing_count}`}
+                </span>
               </div>
             ))
           )}
@@ -145,7 +138,23 @@ export function KitchenHome() {
 
         {/* Shopping list summary */}
         <QuickCard title="Shopping List" linkLabel="View all" linkRoute="/kitchen/shopping">
-          <p className="text-xs text-text-faint italic">View your shopping list</p>
+          {shoppingItems.length === 0 ? (
+            <p className="text-xs text-text-faint italic">Shopping list is empty</p>
+          ) : (
+            <>
+              {shoppingItems.slice(0, 3).map((item) => (
+                <div key={item.id} className="flex items-center justify-between py-1 border-b border-border/50 last:border-0">
+                  <span className="text-xs text-text truncate">{item.name}</span>
+                  {item.quantity > 0 && item.unit && (
+                    <span className="text-[10px] text-text-faint shrink-0">{item.quantity} {item.unit}</span>
+                  )}
+                </div>
+              ))}
+              {shoppingItems.length > 3 && (
+                <p className="text-[10px] text-text-faint mt-1">+{shoppingItems.length - 3} more</p>
+              )}
+            </>
+          )}
         </QuickCard>
       </div>
     </div>

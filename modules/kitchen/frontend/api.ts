@@ -1,7 +1,7 @@
 /**
  * Kitchen module API client — typed wrappers around the shell's apiGet/apiPost/apiPut.
  */
-import { apiGet, apiPost, apiPut } from '@/lib/api'
+import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -165,6 +165,27 @@ export interface ShoppingListResponse {
   total_items: number
 }
 
+// Persistent shopping list (kitchen_shopping_list table)
+export interface PersistentShoppingItem {
+  id: string
+  name: string
+  catalogue_path: string | null
+  quantity: number
+  unit: string
+  source: string
+  source_recipe_id: string | null
+  checked: boolean | number
+  note: string
+  created_at: string
+  updated_at: string
+}
+
+export interface PersistentShoppingListData {
+  items: PersistentShoppingItem[]
+  total: number
+  to_buy: number
+}
+
 // ---------------------------------------------------------------------------
 // API functions
 // ---------------------------------------------------------------------------
@@ -208,6 +229,32 @@ export const kitchenApi = {
 
   recordCookSession: (entry: object) =>
     apiPost<CookLogEntry>(`${BASE}/cook-log`, entry),
+
+  // Persistent shopping list
+  listShopping: (tab?: string) =>
+    apiGet<PersistentShoppingListData>(`${BASE}/shopping`, tab ? { tab } : undefined),
+
+  addShopping: (item: { name: string; catalogue_path?: string; quantity?: number; unit?: string; note?: string }) =>
+    apiPost<PersistentShoppingItem>(`${BASE}/shopping`, item),
+
+  updateShopping: (id: string, updates: { checked?: boolean; quantity?: number; note?: string }) =>
+    apiPut<PersistentShoppingItem>(`${BASE}/shopping/${id}`, updates),
+
+  deleteShopping: (id: string) =>
+    apiDelete(`${BASE}/shopping/${id}`),
+
+  addFromRecipe: (recipeId: string) =>
+    apiPost<{ added: number; recipe_id: string; recipe_title: string }>(`${BASE}/shopping/from-recipe/${recipeId}`, {}),
+
+  clearChecked: () =>
+    apiPost<{ deleted: number }>(`${BASE}/shopping/clear-checked`, {}),
+
+  getShoppingBadge: () =>
+    apiGet<{ count: number }>(`${BASE}/shopping/badge`),
+
+  // Stock
+  addStockItem: (item: { catalogue_path?: string; name?: string; quantity: number; unit: string; location: string; expiry_date?: string; notes?: string }) =>
+    apiPost<{ stock_item_id: string; catalogue_path: string; quantity: number; location: string }>(`${BASE}/stock/add`, item),
 }
 
 // ---------------------------------------------------------------------------
