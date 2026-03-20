@@ -238,7 +238,9 @@ export function fmtQty(quantity: number, unit: string): string {
 
 /** Display name from catalogue_path like "materials/flour" → "Flour". */
 export function nameFromPath(path: string): string {
+  // Catalogue paths are "type/slug/manifest.json" — the readable name is the slug (index -2).
+  // Fall back to the last segment if the path has fewer than 2 parts.
   const parts = path.split('/')
-  const slug = parts[parts.length - 1] || parts[0]
+  const slug = parts.length >= 2 ? parts[parts.length - 2] : (parts[parts.length - 1] || parts[0])
   return slug.split('-').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
 }
