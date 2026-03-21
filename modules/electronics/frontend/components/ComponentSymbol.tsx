@@ -9,6 +9,8 @@
 // Each pin is { dx, dy } from the component's (x, y).
 export const PIN_OFFSETS: Record<string, Record<string, { dx: number; dy: number }>> = {
   resistor:       { p: { dx: -40, dy: 0 }, n: { dx: 40, dy: 0 } },
+  capacitor:      { p: { dx: -40, dy: 0 }, n: { dx: 40, dy: 0 } },
+  inductor:       { p: { dx: -40, dy: 0 }, n: { dx: 40, dy: 0 } },
   voltage_source: { p: { dx: 0, dy: -30 }, n: { dx: 0, dy: 30 } },
   current_source: { p: { dx: 0, dy: -30 }, n: { dx: 0, dy: 30 } },
   ground:         { gnd: { dx: 0, dy: 0 } },
@@ -56,6 +58,20 @@ export function ComponentSymbol({
       if (v >= 1e3) return `${(v / 1e3).toFixed(1)}k\u03A9`
       return `${v}\u03A9`
     }
+    if (unit === 'F') {
+      if (v >= 1e-3) return `${(v * 1e3).toFixed(1)}mF`
+      if (v >= 1e-6) return `${(v * 1e6).toFixed(1)}\u00B5F`
+      if (v >= 1e-9) return `${(v * 1e9).toFixed(1)}nF`
+      if (v >= 1e-12) return `${(v * 1e12).toFixed(1)}pF`
+      return `${v}F`
+    }
+    if (unit === 'H') {
+      if (v >= 1) return `${v}H`
+      if (v >= 1e-3) return `${(v * 1e3).toFixed(1)}mH`
+      if (v >= 1e-6) return `${(v * 1e6).toFixed(1)}\u00B5H`
+      if (v >= 1e-9) return `${(v * 1e9).toFixed(1)}nH`
+      return `${v}H`
+    }
     if (unit === 'V') return `${v}V`
     if (unit === 'A') {
       if (v < 0.001) return `${(v * 1e6).toFixed(0)}\u00B5A`
@@ -80,6 +96,8 @@ export function ComponentSymbol({
 
         {/* Component body */}
         {type === 'resistor' && <ResistorBody selected={selected} />}
+        {type === 'capacitor' && <CapacitorBody selected={selected} />}
+        {type === 'inductor' && <InductorBody selected={selected} />}
         {type === 'voltage_source' && <VoltageSourceBody selected={selected} />}
         {type === 'current_source' && <CurrentSourceBody selected={selected} />}
         {type === 'ground' && <GroundBody selected={selected} />}
@@ -196,6 +214,39 @@ function CurrentSourceBody({ selected }: { selected: boolean }) {
       {/* Arrow */}
       <line x1={0} y1={10} x2={0} y2={-10} stroke={color} strokeWidth={1.5} />
       <polyline points="-4,-6 0,-10 4,-6" fill="none" stroke={color} strokeWidth={1.5} />
+    </>
+  )
+}
+
+function CapacitorBody({ selected }: { selected: boolean }) {
+  const color = selected ? '#38bdf8' : '#e2e8f0'
+  return (
+    <>
+      {/* Leads */}
+      <line x1={-40} y1={0} x2={-5} y2={0} stroke={color} strokeWidth={1.5} />
+      <line x1={5} y1={0} x2={40} y2={0} stroke={color} strokeWidth={1.5} />
+      {/* Plates */}
+      <line x1={-5} y1={-12} x2={-5} y2={12} stroke={color} strokeWidth={2} />
+      <line x1={5} y1={-12} x2={5} y2={12} stroke={color} strokeWidth={2} />
+    </>
+  )
+}
+
+function InductorBody({ selected }: { selected: boolean }) {
+  const color = selected ? '#38bdf8' : '#e2e8f0'
+  return (
+    <>
+      {/* Leads */}
+      <line x1={-40} y1={0} x2={-24} y2={0} stroke={color} strokeWidth={1.5} />
+      <line x1={24} y1={0} x2={40} y2={0} stroke={color} strokeWidth={1.5} />
+      {/* Coil arcs */}
+      <path
+        d="M-24,0 C-24,-10 -16,-10 -16,0 C-16,-10 -8,-10 -8,0 C-8,-10 0,-10 0,0 C0,-10 8,-10 8,0 C8,-10 16,-10 16,0 C16,-10 24,-10 24,0"
+        fill="none"
+        stroke={color}
+        strokeWidth={1.5}
+        strokeLinecap="round"
+      />
     </>
   )
 }

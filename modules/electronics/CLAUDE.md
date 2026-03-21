@@ -17,13 +17,13 @@
 ## Architecture
 
 The electronics module provides a circuit simulator with schematic editing,
-DC analysis, and AI-powered circuit explanation. It runs as a standalone app
-(app_mode) with a branded sidebar.
+DC/AC/transient analysis, and AI-powered circuit explanation. It runs as a
+standalone app (app_mode) with a branded sidebar.
 
 ### What this module owns
-- electronics_* UserDB tables (circuits, components, nets, pins, sim results)
-- MNA DC solver (Modified Nodal Analysis, pure Python + NumPy)
-- Component type registry (built-in library: resistor, voltage source, current source, ground)
+- electronics_* UserDB tables (circuits, components, nets, pins, sim results, sweep data)
+- MNA solver (Modified Nodal Analysis, pure Python + NumPy) — DC, AC, DC sweep, transient
+- Component type registry (built-in library: resistor, capacitor, inductor, voltage source, current source, ground)
 - Electronics-specific API endpoints mounted at /modules/electronics/
 - Electronics views and panels (standalone app mode)
 - SKILL.md — the AI intelligence layer
@@ -123,12 +123,34 @@ All mounted at /modules/electronics/. Auto-generate MCP tools: electronics__{nam
 
 ## MNA Solver
 
-The solver implements Modified Nodal Analysis for DC operating point:
+The solver implements Modified Nodal Analysis with four simulation modes:
+
+### DC Operating Point (sim_type: "op")
 - Builds conductance matrix G and augments with voltage source equations
+- Capacitors = open circuit (no stamp), Inductors = 0V voltage source (short)
 - Solves Ax=z using numpy.linalg.solve
 - Returns node voltages and component currents/power
-- Handles: resistors, voltage sources, current sources
-- Error cases: no ground, singular matrix, unconnected pins, zero resistance
+
+### AC Small-Signal (sim_type: "ac")
+- Complex MNA matrix at each frequency point (log-spaced sweep)
+- Capacitor admittance: Y = jωC, Inductor admittance: Y = 1/(jωL)
+- Returns magnitude and phase at each node per frequency
+- Parameters: f_start, f_stop, points_per_decade
+
+### DC Sweep (sim_type: "dc_sweep")
+- Varies a voltage/current source across a range, solves DC OP at each step
+- Parameters: sweep_source_id, sweep_start, sweep_stop, sweep_steps
+
+### Transient (sim_type: "transient")
+- Trapezoidal integration with companion models
+- Capacitor companion: parallel G = 2C/h + current source I_eq
+- Inductor companion: voltage source with series R = 2L/h
+- Initial conditions from DC OP
+- Parameters: t_stop, t_step (auto if None)
+
+### Component support
+- Resistors, capacitors, inductors, voltage sources, current sources
+- Error cases: no ground, singular matrix, unconnected pins, zero/negative values
 
 ## Code Standards
 
@@ -149,11 +171,12 @@ E5 community library (datasheet ingestion, federated catalogue)
 
 ## Current State
 
-E1 backend complete: 49 tests passing.
-- Migration, models, component registry
-- MNA solver with full test coverage
-- All 16 API endpoints
-- Frontend: not yet started
+E2 complete: 160 tests passing.
+- E1: DC solver, circuit CRUD, component placement, wiring, simulation (16 endpoints)
+- E1b: Wire segments/junctions, DRC, regions, value parsing, Manhattan routing (12 endpoints)
+- E2: Capacitor + inductor, AC/DC sweep/transient analysis, sweep data storage
+- 6 component types: resistor, capacitor, inductor, voltage_source, current_source, ground
+- Frontend: schematic editor with symbols for all 6 types, wire layer, component library
 
 ## Test Command
 

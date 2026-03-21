@@ -2,10 +2,10 @@
  * SVG schematic canvas — the main interactive drawing surface.
  *
  * Handles: pan (middle-click drag), zoom (scroll), component placement,
- * wire drawing (click pin → click pin), component selection.
+ * wire drawing (Manhattan routing), component selection, undo/redo.
  */
-import { useCallback, useRef, useState } from 'react'
-import type { CircuitComponent, CircuitNet, SimResult } from '../api'
+import { useCallback, useRef, useState, useEffect } from 'react'
+import type { CircuitComponent, CircuitNet, SimResult, WireSegment, Junction } from '../api'
 import { ComponentSymbol, getPinPosition, PIN_OFFSETS } from './ComponentSymbol'
 import { WireLayer } from './WireLayer'
 import { ResultOverlay } from './ResultOverlay'
@@ -13,6 +13,8 @@ import { ResultOverlay } from './ResultOverlay'
 interface SchematicCanvasProps {
   components: CircuitComponent[]
   nets: CircuitNet[]
+  wireSegments: WireSegment[]
+  junctions: Junction[]
   simResult: SimResult | null
   selectedComponentId: string | null
   placingType: string | null
@@ -20,12 +22,17 @@ interface SchematicCanvasProps {
   onPlaceComponent: (type: string, x: number, y: number) => void
   onConnectPins: (componentId: string, pinName: string, targetComponentId: string, targetPinName: string) => void
   onMoveComponent: (id: string, x: number, y: number) => void
+  onWireClick?: (wireId: string, x: number, y: number) => void
 }
 
+/** Snap value to grid */
+const snap = (v: number) => Math.round(v / 20) * 20
+
 export function SchematicCanvas({
-  components, nets, simResult,
+  components, nets, wireSegments, junctions, simResult,
   selectedComponentId, placingType,
   onSelectComponent, onPlaceComponent, onConnectPins, onMoveComponent,
+  onWireClick,
 }: SchematicCanvasProps) {
   const svgRef = useRef<SVGSVGElement>(null)
 
@@ -45,6 +52,20 @@ export function SchematicCanvas({
     componentId: string; pinName: string; x: number; y: number
   } | null>(null)
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 })
+
+  // Manhattan routing toggle: horizontal-first vs vertical-first
+  const [routeHorizontalFirst, setRouteHorizontalFirst] = useState(true)
+
+  // Toggle route direction with Shift key while drawing
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Shift' && wireStart) {
+        setRouteHorizontalFirst(prev => !prev)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [wireStart])
 
   /** Convert screen coordinates to SVG coordinates. */
   const screenToSvg = useCallback((clientX: number, clientY: number) => {
@@ -90,9 +111,8 @@ export function SchematicCanvas({
 
     // Placing mode — drop component at click location
     if (placingType) {
-      // Snap to grid (20px)
-      const sx = Math.round(pt.x / 20) * 20
-      const sy = Math.round(pt.y / 20) * 20
+      const sx = snap(pt.x)
+      const sy = snap(pt.y)
       onPlaceComponent(placingType, sx, sy)
       return
     }
@@ -101,7 +121,7 @@ export function SchematicCanvas({
     for (const comp of components) {
       const pins = PIN_OFFSETS[comp.component_type]
       if (!pins) continue
-      for (const [pinName, offset] of Object.entries(pins)) {
+      for (const [pinName] of Object.entries(pins)) {
         const pinPos = getPinPosition(comp.x, comp.y, comp.rotation, comp.component_type, pinName)
         const dx = pt.x - pinPos.x
         const dy = pt.y - pinPos.y
@@ -112,9 +132,11 @@ export function SchematicCanvas({
               onConnectPins(wireStart.componentId, wireStart.pinName, comp.id, pinName)
             }
             setWireStart(null)
+            setRouteHorizontalFirst(true)
           } else {
             // Start wire
             setWireStart({ componentId: comp.id, pinName, x: pinPos.x, y: pinPos.y })
+            setRouteHorizontalFirst(true)
           }
           return
         }
@@ -135,7 +157,10 @@ export function SchematicCanvas({
 
     // Clicked on empty space
     onSelectComponent(null)
-    if (wireStart) setWireStart(null)
+    if (wireStart) {
+      setWireStart(null)
+      setRouteHorizontalFirst(true)
+    }
   }, [placingType, components, wireStart, viewBox, screenToSvg, onPlaceComponent, onConnectPins, onSelectComponent])
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
@@ -157,7 +182,6 @@ export function SchematicCanvas({
     }
 
     if (draggingId) {
-      const snap = (v: number) => Math.round(v / 20) * 20
       onMoveComponent(draggingId, snap(pt.x - dragOffset.current.dx), snap(pt.y - dragOffset.current.dy))
     }
   }, [isPanning, draggingId, viewBox, screenToSvg, onMoveComponent])
@@ -186,6 +210,20 @@ export function SchematicCanvas({
     }
   }
 
+  // Compute Manhattan wire preview path
+  const wirePreviewPoints = wireStart ? (() => {
+    const snappedMouse = { x: snap(mousePos.x), y: snap(mousePos.y) }
+    if (wireStart.x === snappedMouse.x || wireStart.y === snappedMouse.y) {
+      // Straight line
+      return [wireStart, snappedMouse]
+    }
+    // L-shaped path
+    const mid = routeHorizontalFirst
+      ? { x: snappedMouse.x, y: wireStart.y }
+      : { x: wireStart.x, y: snappedMouse.y }
+    return [wireStart, mid, snappedMouse]
+  })() : null
+
   return (
     <svg
       ref={svgRef}
@@ -211,7 +249,13 @@ export function SchematicCanvas({
       />
 
       {/* Wires */}
-      <WireLayer components={components} nets={nets} />
+      <WireLayer
+        components={components}
+        nets={nets}
+        wireSegments={wireSegments}
+        junctions={junctions}
+        onWireClick={onWireClick}
+      />
 
       {/* Components */}
       {components.map((comp) => (
@@ -238,23 +282,54 @@ export function SchematicCanvas({
         />
       )}
 
-      {/* Wire being drawn */}
-      {wireStart && (
-        <line
-          x1={wireStart.x} y1={wireStart.y}
-          x2={mousePos.x} y2={mousePos.y}
-          stroke="#38bdf8"
-          strokeWidth={1.5}
-          strokeDasharray="4 2"
-          pointerEvents="none"
-        />
+      {/* Manhattan wire being drawn */}
+      {wirePreviewPoints && wirePreviewPoints.length >= 2 && (
+        <g>
+          {wirePreviewPoints.slice(0, -1).map((pt, i) => {
+            const next = wirePreviewPoints[i + 1]
+            return (
+              <line
+                key={`preview-${i}`}
+                x1={pt.x} y1={pt.y}
+                x2={next.x} y2={next.y}
+                stroke="#38bdf8"
+                strokeWidth={1.5}
+                strokeDasharray="4 2"
+                pointerEvents="none"
+              />
+            )
+          })}
+          {/* Endpoint dot */}
+          <circle
+            cx={wirePreviewPoints[wirePreviewPoints.length - 1].x}
+            cy={wirePreviewPoints[wirePreviewPoints.length - 1].y}
+            r={3}
+            fill="#38bdf8"
+            pointerEvents="none"
+          />
+        </g>
       )}
 
       {/* Placement cursor */}
       {placingType && (
         <g opacity={0.4} pointerEvents="none">
-          <circle cx={Math.round(mousePos.x / 20) * 20} cy={Math.round(mousePos.y / 20) * 20} r={8} fill="#38bdf8" />
+          <circle cx={snap(mousePos.x)} cy={snap(mousePos.y)} r={8} fill="#38bdf8" />
         </g>
+      )}
+
+      {/* Route direction hint while drawing */}
+      {wireStart && (
+        <text
+          x={viewBox.x + viewBox.w - 10}
+          y={viewBox.y + 15}
+          textAnchor="end"
+          fill="#64748b"
+          fontSize={9}
+          fontFamily="monospace"
+          pointerEvents="none"
+        >
+          Shift: flip route
+        </text>
       )}
     </svg>
   )

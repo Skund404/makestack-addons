@@ -31,6 +31,8 @@ def _load(name: str, relpath: str):
 
 
 migration_001 = _load("mig001", "backend/migrations/001_create_tables.py")
+migration_002 = _load("mig002", "backend/migrations/002_e1b_wire_catalogue.py")
+migration_003 = _load("mig003", "backend/migrations/003_e2_sweep_waveform.py")
 routes_mod = _load("routes", "backend/routes.py")
 
 router = routes_mod.router
@@ -46,6 +48,8 @@ async def db():
     userdb = MockUserDB()
     await userdb.setup()
     await migration_001.up(userdb)
+    await migration_002.up(userdb)
+    await migration_003.up(userdb)
     yield userdb
     await userdb.teardown()
 
@@ -132,7 +136,7 @@ async def test_add_resistor(client):
     body = resp.json()
     assert body["ref_designator"] == "R1"
     assert body["component_type"] == "resistor"
-    assert body["value"] == "10000"
+    assert body["value"] == "10000.0"
     assert len(body["pins"]) == 2  # p, n
 
 
@@ -183,7 +187,7 @@ async def test_update_component(client):
     r = (await client.post(f"/circuits/{c['id']}/components", json={"component_type": "resistor"})).json()
     resp = await client.put(f"/components/{r['id']}", json={"value": "4700", "x": 300})
     assert resp.status_code == 200
-    assert resp.json()["value"] == "4700"
+    assert resp.json()["value"] == "4700.0"
 
 
 @pytest.mark.asyncio

@@ -77,6 +77,20 @@ export interface ComponentResult {
   voltage_drop: number
 }
 
+export interface SweepNodeVoltage {
+  real: number
+  imag: number
+  magnitude: number
+  phase_deg: number
+}
+
+export interface SweepDataPoint {
+  point_index: number
+  parameter_value: number
+  node_voltages: Record<string, number | SweepNodeVoltage>
+  component_results: Record<string, { current: number; power: number }>
+}
+
 export interface SimResult {
   id: string
   circuit_id: string
@@ -88,6 +102,51 @@ export interface SimResult {
   duration_ms: number
   node_results: NodeResult[]
   component_results: ComponentResult[]
+  sweep_data?: SweepDataPoint[]
+}
+
+export interface WireSegment {
+  id: string
+  circuit_id: string
+  net_id: string
+  x1: number
+  y1: number
+  x2: number
+  y2: number
+  sort_order: number
+}
+
+export interface Junction {
+  id: string
+  circuit_id: string
+  net_id: string
+  x: number
+  y: number
+}
+
+export interface DrcWarning {
+  type: string
+  severity: string
+  message: string
+  component_ids: string[]
+  net_ids: string[]
+}
+
+export interface Region {
+  id: string
+  circuit_id: string
+  name: string
+  color: string
+  description: string
+  created_by: string
+  members: RegionMember[]
+}
+
+export interface RegionMember {
+  id: string
+  region_id: string
+  member_type: string
+  member_id: string
 }
 
 export interface Circuit {
@@ -101,6 +160,8 @@ export interface Circuit {
   updated_at: string
   components: CircuitComponent[]
   nets: CircuitNet[]
+  wire_segments: WireSegment[]
+  junctions: Junction[]
   last_sim_result: SimResultSummary | null
 }
 
@@ -172,8 +233,19 @@ export const electronicsApi = {
     apiDelete<{ disconnected: boolean }>(`${BASE}/pins/${pinId}/disconnect`),
 
   // Simulation
-  simulate: (circuitId: string) =>
-    apiPost<SimResult>(`${BASE}/circuits/${circuitId}/simulate`, { sim_type: 'op' }),
+  simulate: (circuitId: string, params?: {
+    sim_type?: string
+    f_start?: number
+    f_stop?: number
+    points_per_decade?: number
+    sweep_source_id?: string
+    sweep_start?: number
+    sweep_stop?: number
+    sweep_steps?: number
+    t_stop?: number
+    t_step?: number
+  }) =>
+    apiPost<SimResult>(`${BASE}/circuits/${circuitId}/simulate`, params ?? { sim_type: 'op' }),
 
   getResults: (circuitId: string) =>
     apiGet<SimResult>(`${BASE}/circuits/${circuitId}/results`),
@@ -184,4 +256,61 @@ export const electronicsApi = {
 
   getComponentType: (type: string) =>
     apiGet<ComponentTypeInfo>(`${BASE}/library/${type}`),
+
+  // Wire Segments (E1b)
+  listWires: (circuitId: string) =>
+    apiGet<{ wire_segments: WireSegment[]; junctions: Junction[] }>(
+      `${BASE}/circuits/${circuitId}/wires`
+    ),
+
+  createWire: (circuitId: string, data: {
+    net_id?: string
+    net_name?: string
+    x1: number; y1: number; x2: number; y2: number
+  }) =>
+    apiPost<WireSegment>(`${BASE}/circuits/${circuitId}/wires`, data),
+
+  deleteWire: (wireId: string) =>
+    apiDelete<{ deleted: boolean }>(`${BASE}/wires/${wireId}`),
+
+  splitWire: (circuitId: string, data: { wire_id: string; x: number; y: number }) =>
+    apiPost<{ junction: Junction; segments: WireSegment[] }>(
+      `${BASE}/circuits/${circuitId}/wires/split`, data
+    ),
+
+  autoRoute: (circuitId: string, data: {
+    net_id?: string; net_name?: string
+    from_x: number; from_y: number; to_x: number; to_y: number
+    route_style?: string
+  }) =>
+    apiPost<{ net_id: string; segments: WireSegment[] }>(
+      `${BASE}/circuits/${circuitId}/wires/auto-route`, data
+    ),
+
+  // DRC (E1b)
+  runDrc: (circuitId: string) =>
+    apiGet<{ warnings: DrcWarning[]; count: number }>(`${BASE}/circuits/${circuitId}/drc`),
+
+  // Regions (E1b)
+  listRegions: (circuitId: string) =>
+    apiGet<{ items: Region[] }>(`${BASE}/circuits/${circuitId}/regions`),
+
+  createRegion: (circuitId: string, data: {
+    name: string; color?: string; description?: string; created_by?: string
+  }) =>
+    apiPost<Region>(`${BASE}/circuits/${circuitId}/regions`, data),
+
+  updateRegion: (regionId: string, data: {
+    name?: string; color?: string; description?: string
+  }) =>
+    apiPut<Region>(`${BASE}/regions/${regionId}`, data),
+
+  deleteRegion: (regionId: string) =>
+    apiDelete<{ deleted: boolean }>(`${BASE}/regions/${regionId}`),
+
+  addRegionMember: (regionId: string, data: { member_type: string; member_id: string }) =>
+    apiPost<RegionMember>(`${BASE}/regions/${regionId}/members`, data),
+
+  removeRegionMember: (regionId: string, memberId: string) =>
+    apiDelete<{ deleted: boolean }>(`${BASE}/regions/${regionId}/members/${memberId}`),
 }

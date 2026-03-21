@@ -1,8 +1,8 @@
 {
   "name": "electronics",
   "display_name": "Electronics Lab",
-  "version": "0.1.0",
-  "description": "Circuit simulator with schematic editor, DC analysis, and AI-powered explanation",
+  "version": "0.3.0",
+  "description": "Circuit simulator with schematic editor, DC/AC/transient analysis, wire routing, DRC, and AI-powered explanation",
   "author": "Makestack",
   "license": "proprietary",
   "shell_compatibility": ">=0.1.0",
@@ -18,17 +18,22 @@
     { "name": "electronics_pins",                   "description": "Pin-to-net connections forming the circuit topology" },
     { "name": "electronics_sim_results",            "description": "Simulation run metadata and status" },
     { "name": "electronics_sim_node_results",       "description": "Per-net voltage results from simulation" },
-    { "name": "electronics_sim_component_results",  "description": "Per-component current/power/voltage results from simulation" }
+    { "name": "electronics_sim_component_results",  "description": "Per-component current/power/voltage results from simulation" },
+    { "name": "electronics_wire_segments",          "description": "Geometric wire segments for schematic display (E1b)" },
+    { "name": "electronics_junctions",              "description": "Junction points where 3+ wire segments meet (E1b)" },
+    { "name": "electronics_regions",                "description": "Named colored annotation regions (E1b)" },
+    { "name": "electronics_region_members",         "description": "Component/net membership in annotation regions (E1b)" },
+    { "name": "electronics_sweep_points",            "description": "Multi-point simulation data for AC/DC sweep/transient waveforms (E2)" }
   ],
 
   "api_endpoints": [
     { "method": "GET",    "path": "/circuits",                          "name": "list_circuits",       "description": "List all circuits with pagination" },
     { "method": "POST",   "path": "/circuits",                          "name": "create_circuit",      "description": "Create a new empty circuit" },
-    { "method": "GET",    "path": "/circuits/{circuit_id}",             "name": "get_circuit",         "description": "Full circuit with components, nets, pins, and latest simulation result" },
+    { "method": "GET",    "path": "/circuits/{circuit_id}",             "name": "get_circuit",         "description": "Full circuit with components, nets, wires, pins, and latest simulation result" },
     { "method": "PUT",    "path": "/circuits/{circuit_id}",             "name": "update_circuit",      "description": "Update circuit name, description, or canvas size" },
     { "method": "DELETE", "path": "/circuits/{circuit_id}",             "name": "delete_circuit",      "description": "Delete circuit and all children" },
 
-    { "method": "POST",   "path": "/circuits/{circuit_id}/components",  "name": "add_component",       "description": "Place a component on the canvas (auto-assigns ref designator and creates pins)" },
+    { "method": "POST",   "path": "/circuits/{circuit_id}/components",  "name": "add_component",       "description": "Place a component (auto-assigns ref designator, creates pins, parses engineering values)" },
     { "method": "PUT",    "path": "/components/{component_id}",         "name": "update_component",    "description": "Move, rotate, or change value of a placed component" },
     { "method": "DELETE", "path": "/components/{component_id}",         "name": "delete_component",    "description": "Remove a component and its pins from the circuit" },
 
@@ -36,7 +41,22 @@
     { "method": "POST",   "path": "/circuits/{circuit_id}/connect",     "name": "connect_pins",        "description": "Connect a component pin to a net (auto-creates net if needed)" },
     { "method": "DELETE", "path": "/pins/{pin_id}/disconnect",          "name": "disconnect_pin",      "description": "Remove a pin's net connection" },
 
-    { "method": "POST",   "path": "/circuits/{circuit_id}/simulate",    "name": "run_simulation",      "description": "Run DC operating point analysis and return results" },
+    { "method": "GET",    "path": "/circuits/{circuit_id}/wires",       "name": "list_wires",          "description": "List all wire segments and junctions for a circuit" },
+    { "method": "POST",   "path": "/circuits/{circuit_id}/wires",       "name": "create_wire",         "description": "Create a wire segment on a net" },
+    { "method": "DELETE", "path": "/wires/{wire_id}",                   "name": "delete_wire",         "description": "Delete a wire segment" },
+    { "method": "POST",   "path": "/circuits/{circuit_id}/wires/split", "name": "split_wire",          "description": "Split a wire at a point creating a junction and two segments" },
+    { "method": "POST",   "path": "/circuits/{circuit_id}/wires/auto-route", "name": "auto_route",     "description": "Generate Manhattan-routed wire segments between two points" },
+
+    { "method": "GET",    "path": "/circuits/{circuit_id}/drc",         "name": "run_drc",             "description": "Run design rule checks returning warnings" },
+
+    { "method": "GET",    "path": "/circuits/{circuit_id}/regions",     "name": "list_regions",        "description": "List annotation regions for a circuit" },
+    { "method": "POST",   "path": "/circuits/{circuit_id}/regions",     "name": "create_region",       "description": "Create a named annotation region" },
+    { "method": "PUT",    "path": "/regions/{region_id}",               "name": "update_region",       "description": "Update region name, color, or description" },
+    { "method": "DELETE", "path": "/regions/{region_id}",               "name": "delete_region",       "description": "Delete a region and its members" },
+    { "method": "POST",   "path": "/regions/{region_id}/members",       "name": "add_region_member",   "description": "Add a component or net to a region" },
+    { "method": "DELETE", "path": "/regions/{region_id}/members/{member_id}", "name": "remove_region_member", "description": "Remove a member from a region" },
+
+    { "method": "POST",   "path": "/circuits/{circuit_id}/simulate",    "name": "run_simulation",      "description": "Run simulation (op, ac, dc_sweep, transient) and return results" },
     { "method": "GET",    "path": "/circuits/{circuit_id}/results",     "name": "get_results",         "description": "Get the latest simulation results for a circuit" },
     { "method": "GET",    "path": "/circuits/{circuit_id}/results/{result_id}", "name": "get_result_detail", "description": "Get a specific simulation result with full breakdown" },
 

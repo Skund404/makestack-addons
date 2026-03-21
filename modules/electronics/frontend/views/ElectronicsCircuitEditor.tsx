@@ -14,11 +14,11 @@ import { SimulationPanel } from '../components/SimulationPanel'
 import { RotateCw, Trash2 } from 'lucide-react'
 
 interface EditorProps {
-  params: { id: string }
+  id: string
 }
 
-export function ElectronicsCircuitEditor({ params }: EditorProps) {
-  const circuitId = params.id
+export function ElectronicsCircuitEditor({ id }: EditorProps) {
+  const circuitId = id
   const queryClient = useQueryClient()
 
   const [placingType, setPlacingType] = useState<string | null>(null)
@@ -195,6 +195,8 @@ export function ElectronicsCircuitEditor({ params }: EditorProps) {
         <SchematicCanvas
           components={circuit.components}
           nets={circuit.nets}
+          wireSegments={circuit.wire_segments || []}
+          junctions={circuit.junctions || []}
           simResult={simResult}
           selectedComponentId={selectedComponentId}
           placingType={placingType}

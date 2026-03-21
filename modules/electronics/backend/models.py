@@ -75,4 +75,73 @@ class ConnectPinsRequest(BaseModel):
 
 
 class SimulateRequest(BaseModel):
-    sim_type: str = "op"  # only "op" in E1
+    sim_type: str = "op"  # "op", "ac", "dc_sweep", "transient"
+
+    # AC analysis parameters
+    f_start: float = 1.0
+    f_stop: float = 1e6
+    points_per_decade: int = 20
+
+    # DC sweep parameters
+    sweep_source_id: str | None = None
+    sweep_start: float = 0.0
+    sweep_stop: float = 10.0
+    sweep_steps: int = 50
+
+    # Transient analysis parameters
+    t_stop: float = 0.01
+    t_step: float | None = None
+
+
+# ---------------------------------------------------------------------------
+# Wire Segments (E1b)
+# ---------------------------------------------------------------------------
+
+
+class WireSegmentCreate(BaseModel):
+    net_id: str | None = None  # auto-creates net if None
+    net_name: str | None = None  # used when net_id is None
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+
+
+class WireSplitRequest(BaseModel):
+    wire_id: str
+    x: float
+    y: float
+
+
+class AutoRouteRequest(BaseModel):
+    """Generate Manhattan wire segments between two points."""
+    net_id: str | None = None
+    net_name: str | None = None
+    from_x: float
+    from_y: float
+    to_x: float
+    to_y: float
+    route_style: str = "horizontal_first"  # or "vertical_first"
+
+
+# ---------------------------------------------------------------------------
+# Regions (E1b)
+# ---------------------------------------------------------------------------
+
+
+class RegionCreate(BaseModel):
+    name: str
+    color: str = "#3b82f6"
+    description: str = ""
+    created_by: str = "user"  # "user" or "ai"
+
+
+class RegionUpdate(BaseModel):
+    name: str | None = None
+    color: str | None = None
+    description: str | None = None
+
+
+class RegionMemberAdd(BaseModel):
+    member_type: str  # "component" or "net"
+    member_id: str
