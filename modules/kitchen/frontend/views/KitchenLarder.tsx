@@ -168,9 +168,17 @@ export function KitchenLarder() {
           })
         )}
 
+        {/* Backdrop — closes panel on outside click */}
+        {addPanelOpen && (
+          <div
+            className="absolute inset-0 z-10"
+            onClick={() => setAddPanelOpen(false)}
+          />
+        )}
+
         {/* Add item slide-out panel */}
         <div
-          className="absolute right-0 top-0 bottom-0 w-64 flex flex-col border-l border-border bg-surface shadow-lg transition-transform duration-200"
+          className="absolute right-0 top-0 bottom-0 w-64 flex flex-col border-l border-border bg-surface shadow-lg transition-transform duration-200 z-20"
           style={{ transform: addPanelOpen ? 'translateX(0)' : 'translateX(100%)' }}
         >
           <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0">
