@@ -47,7 +47,7 @@ export function KitchenLarder() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['kitchen-stock-all'],
-    queryFn: () => kitchenApi.listStock({ limit: 500 }),
+    queryFn: () => kitchenApi.listStock({ limit: 200 }),
     staleTime: 30_000,
   })
 
