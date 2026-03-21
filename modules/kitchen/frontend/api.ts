@@ -101,6 +101,7 @@ export interface CanMakeResult {
   recipe_id: string
   recipe_title: string
   can_make: boolean
+  missing_count: number
   ingredients: StockCheckIngredient[]
 }
 
@@ -186,6 +187,51 @@ export interface PersistentShoppingListData {
   to_buy: number
 }
 
+// K9b: Recipe builder types
+export interface RecipeIngredientInput {
+  catalogue_path?: string | null
+  name: string
+  quantity: number
+  unit: string
+  notes?: string
+}
+
+export interface RecipeFullCreate {
+  title: string
+  description?: string
+  cuisine_tag?: string
+  prep_time_mins?: number | null
+  cook_time_mins?: number | null
+  servings?: number
+  difficulty?: string
+  notes?: string
+  tags?: string[]
+  steps?: string[]
+  ingredients?: RecipeIngredientInput[]
+  techniques?: string[]
+  tools?: string[]
+}
+
+export interface CatalogueSearchResult {
+  path: string
+  name: string
+  type: string
+  description: string
+  tags: string[]
+}
+
+export interface CatalogueSearchResponse {
+  results: CatalogueSearchResult[]
+  total: number
+}
+
+export interface StockItemUpdate {
+  quantity?: number
+  unit?: string
+  location?: string
+  expiry_date?: string | null
+}
+
 // ---------------------------------------------------------------------------
 // API functions
 // ---------------------------------------------------------------------------
@@ -252,9 +298,34 @@ export const kitchenApi = {
   getShoppingBadge: () =>
     apiGet<{ count: number }>(`${BASE}/shopping/badge`),
 
-  // Stock
+  // Stock — add
   addStockItem: (item: { catalogue_path?: string; name?: string; quantity: number; unit: string; location: string; expiry_date?: string; notes?: string }) =>
     apiPost<{ stock_item_id: string; catalogue_path: string; quantity: number; location: string }>(`${BASE}/stock/add`, item),
+
+  // K9b: Orchestrated recipe CRUD
+  createRecipeFull: (data: RecipeFullCreate) =>
+    apiPost<RecipeDetail>(`${BASE}/recipes/full`, data),
+
+  updateRecipeFull: (id: string, data: RecipeFullCreate) =>
+    apiPut<RecipeDetail>(`${BASE}/recipes/${id}/full`, data),
+
+  deleteRecipe: (id: string) =>
+    apiDelete<{ deleted: boolean; id: string }>(`${BASE}/recipes/${id}`),
+
+  // K9b: Catalogue search
+  searchCatalogue: (q: string, type?: string) =>
+    apiGet<CatalogueSearchResponse>(`${BASE}/catalogue/search`, { q, ...(type ? { type } : {}) }),
+
+  // K9b: Stock item edit/delete
+  updateStockItem: (id: string, updates: StockItemUpdate) =>
+    apiPut<KitchenStockItem>(`${BASE}/stock/${id}`, updates),
+
+  deleteStockItem: (id: string) =>
+    apiDelete<{ deleted: boolean; id: string }>(`${BASE}/stock/${id}`),
+
+  // K9b: Meal plan entry delete
+  deleteMealPlanEntry: (week: string, entryId: string) =>
+    apiDelete<{ deleted: boolean; id: string }>(`${BASE}/meal-plan/${week}/entry/${entryId}`),
 }
 
 // ---------------------------------------------------------------------------

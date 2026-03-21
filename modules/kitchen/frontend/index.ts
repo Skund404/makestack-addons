@@ -24,6 +24,8 @@ import { KitchenRecipeDetail } from './views/KitchenRecipeDetail'
 import { KitchenMealPlan } from './views/KitchenMealPlan'
 import { KitchenShoppingList } from './views/KitchenShoppingList'
 import { KitchenCookLog } from './views/KitchenCookLog'
+import { KitchenRecipeNew } from './views/KitchenRecipeNew'
+import { KitchenRecipeEdit } from './views/KitchenRecipeEdit'
 import { KitchenSidebar } from './components/KitchenSidebar'
 
 export function registerKitchenModule(): void {
@@ -61,7 +63,9 @@ export function registerKitchenModule(): void {
   registerView('/kitchen',                  KitchenHome)
   registerView('/kitchen/larder',           KitchenLarder)
   registerView('/kitchen/recipes',          KitchenRecipes)
+  registerView('/kitchen/recipes/new',      KitchenRecipeNew)
   registerView('/kitchen/recipes/:id',      KitchenRecipeDetail)
+  registerView('/kitchen/recipes/:id/edit', KitchenRecipeEdit)
   registerView('/kitchen/meal-plan',        KitchenMealPlan)
   registerView('/kitchen/shopping',         KitchenShoppingList)
   registerView('/kitchen/cook-log',         KitchenCookLog)

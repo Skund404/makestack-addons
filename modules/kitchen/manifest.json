@@ -67,17 +67,23 @@
     { "method": "GET",    "path": "/shopping/badge",                  "name": "get_shopping_badge",     "description": "Count of unchecked shopping list items (for badge display)" },
     { "method": "PUT",    "path": "/shopping/{item_id}",              "name": "update_shopping_item",   "description": "Toggle checked, update quantity or note on a shopping item" },
     { "method": "DELETE", "path": "/shopping/{item_id}",              "name": "delete_shopping_item",   "description": "Remove a single shopping list item" },
-    { "method": "POST",   "path": "/stock/add",                       "name": "add_stock_item",         "description": "Create a single stock item via inventory-stock peer with optional metadata" }
+    { "method": "POST",   "path": "/stock/add",                       "name": "add_stock_item",         "description": "Create a single stock item via inventory-stock peer with optional metadata" },
+
+    { "method": "POST",   "path": "/recipes/full",                    "name": "create_recipe_full",     "description": "Create recipe with full primitive composition (Workflow + Materials + relationships)" },
+    { "method": "PUT",    "path": "/recipes/{recipe_id}/full",        "name": "update_recipe_full",     "description": "Update recipe with full primitive composition (creates new Materials if needed)" },
+    { "method": "DELETE", "path": "/recipes/{recipe_id}",             "name": "delete_recipe",          "description": "Delete recipe and ingredients (preserves Workflow primitive in catalogue)" },
+    { "method": "GET",    "path": "/catalogue/search",                "name": "search_catalogue",       "description": "Search catalogue with optional type filter (material/tool/technique/workflow)" },
+    { "method": "PUT",    "path": "/stock/{item_id}",                 "name": "update_stock_item",      "description": "Update stock item quantity/unit/location/expiry via inventory-stock peer" },
+    { "method": "DELETE", "path": "/stock/{item_id}",                 "name": "delete_stock_item",      "description": "Remove stock item via inventory-stock peer and clean kitchen metadata" },
+    { "method": "DELETE", "path": "/meal-plan/{week}/entry/{entry_id}","name": "delete_meal_plan_entry", "description": "Delete a single meal plan entry" }
   ],
 
   "views": [
-    { "id": "kitchen-home",          "label": "Home",           "route": "/kitchen",               "icon": "Home",        "sort_order": 0 },
-    { "id": "kitchen-larder",        "label": "Larder",         "route": "/kitchen/larder",        "icon": "Archive",     "sort_order": 1 },
-    { "id": "kitchen-recipes",       "label": "Recipes",        "route": "/kitchen/recipes",       "icon": "BookOpen",    "sort_order": 2 },
-    { "id": "kitchen-recipe-detail", "label": "Recipe Detail",  "route": "/kitchen/recipes/:id",   "icon": "BookOpen",    "sort_order": 3 },
-    { "id": "kitchen-meal-plan",     "label": "Meal Plan",      "route": "/kitchen/meal-plan",     "icon": "Calendar",    "sort_order": 4 },
-    { "id": "kitchen-shopping",      "label": "Shop",           "route": "/kitchen/shopping",      "icon": "ShoppingCart","sort_order": 5 },
-    { "id": "kitchen-cook-log",      "label": "Cook Log",       "route": "/kitchen/cook-log",      "icon": "ClipboardList","sort_order": 6 }
+    { "id": "kitchen-home",      "label": "Home",      "route": "/kitchen",            "icon": "Home",        "sort_order": 0 },
+    { "id": "kitchen-larder",    "label": "Larder",    "route": "/kitchen/larder",     "icon": "Archive",     "sort_order": 1 },
+    { "id": "kitchen-recipes",   "label": "Recipes",   "route": "/kitchen/recipes",    "icon": "BookOpen",    "sort_order": 2 },
+    { "id": "kitchen-meal-plan", "label": "Meal Plan", "route": "/kitchen/meal-plan",  "icon": "Calendar",    "sort_order": 3 },
+    { "id": "kitchen-shopping",  "label": "Shop",      "route": "/kitchen/shopping",   "icon": "ShoppingCart","sort_order": 4 }
   ],
 
   "panels": [

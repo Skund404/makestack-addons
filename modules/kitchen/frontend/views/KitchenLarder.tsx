@@ -9,6 +9,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2, Plus, X } from 'lucide-react'
 import { kitchenApi, nameFromPath, fmtQty } from '../api'
 import type { KitchenStockList, KitchenStockItem } from '../api'
+import { StockItemDialog } from '../components/StockItemDialog'
 
 const COLUMNS = [
   { key: 'pantry',  label: 'Pantry',  color: '#BA7517' },
@@ -35,6 +36,7 @@ const LOCATIONS = [
 export function KitchenLarder() {
   const [search, setSearch] = useState('')
   const [addPanelOpen, setAddPanelOpen] = useState(false)
+  const [editingItem, setEditingItem] = useState<KitchenStockItem | null>(null)
   const queryClient = useQueryClient()
 
   // Form state
@@ -109,7 +111,7 @@ export function KitchenLarder() {
           className="flex-1 px-3 py-1.5 text-xs rounded border border-border bg-bg text-text placeholder:text-text-faint focus:outline-none focus:border-accent/50"
         />
         <button
-          onClick={() => setAddPanelOpen(true)}
+          onClick={() => { setAddPanelOpen(true); setEditingItem(null) }}
           className="flex items-center gap-1 px-3 py-1.5 text-[10px] font-medium rounded bg-accent/10 text-accent hover:bg-accent/20 transition-colors"
         >
           <Plus size={10} /> Add item
@@ -155,7 +157,8 @@ export function KitchenLarder() {
                       colItems.map((item) => (
                         <div
                           key={item.id}
-                          className="flex items-center gap-2 px-3 py-2 border-b border-border/50"
+                          onClick={() => { setEditingItem(item); setAddPanelOpen(false) }}
+                          className="flex items-center gap-2 px-3 py-2 border-b border-border/50 cursor-pointer hover:bg-accent/5 transition-colors"
                         >
                           <span className="flex-1 text-xs text-text truncate">{nameFromPath(item.catalogue_path)}</span>
                           <span className="text-[11px] text-text-faint shrink-0">
@@ -172,95 +175,100 @@ export function KitchenLarder() {
           )}
         </div>
 
-        {/* Add item side panel — pushes columns, no overlap */}
+        {/* Side panel — add item OR edit item */}
         <div
           className="shrink-0 flex flex-col border-l border-border bg-surface overflow-hidden transition-[width] duration-200"
-          style={{ width: addPanelOpen ? 240 : 0 }}
+          style={{ width: (addPanelOpen || editingItem) ? 240 : 0 }}
         >
           <div className="w-60 flex flex-col flex-1 overflow-hidden">
-          <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0">
-            <p className="text-[10px] font-medium uppercase tracking-wider text-text-faint">Add Item</p>
-            <button onClick={() => setAddPanelOpen(false)} className="text-text-faint hover:text-text">
-              <X size={14} />
-            </button>
-          </div>
-          <div className="flex-1 overflow-y-auto p-3 space-y-3">
-            {/* Name */}
-            <div>
-              <label className="block text-[10px] font-medium text-text-faint mb-1">Name</label>
-              <input
-                type="text"
-                value={formName}
-                onChange={(e) => setFormName(e.target.value)}
-                placeholder="e.g. Flour"
-                className="w-full px-2.5 py-1.5 text-xs rounded border border-border bg-bg text-text placeholder:text-text-faint focus:outline-none focus:border-accent/50"
-              />
+          {editingItem ? (
+            <StockItemDialog
+              item={editingItem}
+              onClose={() => setEditingItem(null)}
+            />
+          ) : (
+            <>
+            <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0">
+              <p className="text-[10px] font-medium uppercase tracking-wider text-text-faint">Add Item</p>
+              <button onClick={() => setAddPanelOpen(false)} className="text-text-faint hover:text-text">
+                <X size={14} />
+              </button>
             </div>
-
-            {/* Quantity + Unit */}
-            <div className="flex gap-2">
-              <div className="flex-1">
-                <label className="block text-[10px] font-medium text-text-faint mb-1">Qty</label>
-                <input
-                  type="number"
-                  value={formQty}
-                  onChange={(e) => setFormQty(e.target.value)}
-                  min="0"
-                  step="any"
-                  className="w-full px-2.5 py-1.5 text-xs rounded border border-border bg-bg text-text focus:outline-none focus:border-accent/50"
-                />
-              </div>
-              <div className="flex-1">
-                <label className="block text-[10px] font-medium text-text-faint mb-1">Unit</label>
+            <div className="flex-1 overflow-y-auto p-3 space-y-3">
+              {/* Name */}
+              <div>
+                <label className="block text-[10px] font-medium text-text-faint mb-1">Name</label>
                 <input
                   type="text"
-                  value={formUnit}
-                  onChange={(e) => setFormUnit(e.target.value)}
-                  placeholder="g, ml, piece"
+                  value={formName}
+                  onChange={(e) => setFormName(e.target.value)}
+                  placeholder="e.g. Flour"
                   className="w-full px-2.5 py-1.5 text-xs rounded border border-border bg-bg text-text placeholder:text-text-faint focus:outline-none focus:border-accent/50"
                 />
               </div>
-            </div>
 
-            {/* Location */}
-            <div>
-              <label className="block text-[10px] font-medium text-text-faint mb-1">Location</label>
-              <select
-                value={formLocation}
-                onChange={(e) => setFormLocation(e.target.value)}
-                className="w-full px-2.5 py-1.5 text-xs rounded border border-border bg-bg text-text focus:outline-none focus:border-accent/50"
+              {/* Quantity + Unit */}
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="block text-[10px] font-medium text-text-faint mb-1">Qty</label>
+                  <input
+                    type="number"
+                    value={formQty}
+                    onChange={(e) => setFormQty(e.target.value)}
+                    min="0"
+                    step="any"
+                    className="w-full px-2.5 py-1.5 text-xs rounded border border-border bg-bg text-text focus:outline-none focus:border-accent/50"
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="block text-[10px] font-medium text-text-faint mb-1">Unit</label>
+                  <input
+                    type="text"
+                    value={formUnit}
+                    onChange={(e) => setFormUnit(e.target.value)}
+                    placeholder="g, ml, piece"
+                    className="w-full px-2.5 py-1.5 text-xs rounded border border-border bg-bg text-text placeholder:text-text-faint focus:outline-none focus:border-accent/50"
+                  />
+                </div>
+              </div>
+
+              {/* Location */}
+              <div>
+                <label className="block text-[10px] font-medium text-text-faint mb-1">Location</label>
+                <select
+                  value={formLocation}
+                  onChange={(e) => setFormLocation(e.target.value)}
+                  className="w-full px-2.5 py-1.5 text-xs rounded border border-border bg-bg text-text focus:outline-none focus:border-accent/50"
+                >
+                  {LOCATIONS.map((loc) => (
+                    <option key={loc.value} value={loc.value}>{loc.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Expiry date */}
+              <div>
+                <label className="block text-[10px] font-medium text-text-faint mb-1">Expiry date</label>
+                <input
+                  type="date"
+                  value={formExpiry}
+                  onChange={(e) => setFormExpiry(e.target.value)}
+                  className="w-full px-2.5 py-1.5 text-xs rounded border border-border bg-bg text-text focus:outline-none focus:border-accent/50"
+                />
+              </div>
+
+              {/* Save button */}
+              <button
+                onClick={handleAddItem}
+                disabled={!formName.trim() || formSaving}
+                className="w-full px-3 py-2 text-xs font-medium rounded transition-colors disabled:opacity-50"
+                style={{ backgroundColor: '#c8935a', color: '#15100b' }}
               >
-                {LOCATIONS.map((loc) => (
-                  <option key={loc.value} value={loc.value}>{loc.label}</option>
-                ))}
-              </select>
+                {formSaving ? 'Saving...' : 'Add to larder'}
+              </button>
             </div>
-
-            {/* Expiry date */}
-            <div>
-              <label className="block text-[10px] font-medium text-text-faint mb-1">Expiry date</label>
-              <input
-                type="date"
-                value={formExpiry}
-                onChange={(e) => setFormExpiry(e.target.value)}
-                className="w-full px-2.5 py-1.5 text-xs rounded border border-border bg-bg text-text focus:outline-none focus:border-accent/50"
-              />
-            </div>
-
-            {/* Save button */}
-            <button
-              onClick={handleAddItem}
-              disabled={!formName.trim() || formSaving}
-              className="w-full px-3 py-2 text-xs font-medium rounded transition-colors disabled:opacity-50"
-              style={{ backgroundColor: '#c8935a', color: '#15100b' }}
-            >
-              {formSaving ? 'Saving...' : 'Add to larder'}
-            </button>
-
-            <p className="text-[10px] text-text-faint italic mt-2">
-              Custom fields — coming soon
-            </p>
-          </div>
+            </>
+          )}
           </div>
         </div>
 

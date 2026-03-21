@@ -315,3 +315,48 @@ class StockItemCreate(BaseModel):
     location: str = "pantry"
     expiry_date: str | None = None
     notes: str = ""
+
+
+# ---------------------------------------------------------------------------
+# K9a: Orchestrated recipe creation (primitive composition)
+# ---------------------------------------------------------------------------
+
+
+class RecipeIngredientInput(BaseModel):
+    """Ingredient entry for the full recipe builder.
+
+    catalogue_path=None means "create a new Material primitive".
+    """
+
+    catalogue_path: str | None = None
+    name: str
+    quantity: float
+    unit: str
+    notes: str = ""
+
+
+class RecipeFullCreate(BaseModel):
+    """Full recipe payload — one API call creates Workflow primitive + kitchen rows."""
+
+    title: str
+    description: str = ""
+    cuisine_tag: str = ""
+    prep_time_mins: int | None = None
+    cook_time_mins: int | None = None
+    servings: int = 1
+    difficulty: str = ""
+    notes: str = ""
+    tags: list[str] = []
+    steps: list[str] = []
+    ingredients: list[RecipeIngredientInput] = []
+    techniques: list[str] = []   # catalogue_paths of linked techniques
+    tools: list[str] = []        # catalogue_paths of linked tools
+
+
+class StockItemUpdate(BaseModel):
+    """Partial update for a stock item."""
+
+    quantity: float | None = None
+    unit: str | None = None
+    location: str | None = None
+    expiry_date: str | None = None

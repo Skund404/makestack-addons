@@ -250,14 +250,37 @@ export function KitchenMealPlan() {
                                 />
                               </div>
 
-                              <button
-                                onClick={handleSave}
-                                disabled={saving}
-                                className="w-full py-1.5 text-xs font-medium rounded transition-colors disabled:opacity-50"
-                                style={{ backgroundColor: '#c8935a', color: '#15100b' }}
-                              >
-                                {saving ? 'Saving...' : 'Save'}
-                              </button>
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={handleSave}
+                                  disabled={saving}
+                                  className="flex-1 py-1.5 text-xs font-medium rounded transition-colors disabled:opacity-50"
+                                  style={{ backgroundColor: '#c8935a', color: '#15100b' }}
+                                >
+                                  {saving ? 'Saving...' : 'Save'}
+                                </button>
+                                {(grid[editing.dow]?.[editing.slot]) && (
+                                  <button
+                                    onClick={async () => {
+                                      const entry = grid[editing.dow]?.[editing.slot]
+                                      if (!entry) return
+                                      setSaving(true)
+                                      try {
+                                        await kitchenApi.deleteMealPlanEntry(week, entry.id)
+                                        await queryClient.invalidateQueries({ queryKey: ['kitchen-meal-plan', week] })
+                                        await queryClient.invalidateQueries({ queryKey: ['kitchen-shopping-list', week] })
+                                        setEditing(null)
+                                      } finally {
+                                        setSaving(false)
+                                      }
+                                    }}
+                                    disabled={saving}
+                                    className="px-3 py-1.5 text-xs font-medium rounded border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-50"
+                                  >
+                                    Clear
+                                  </button>
+                                )}
+                              </div>
                             </div>
                           )}
                         </div>

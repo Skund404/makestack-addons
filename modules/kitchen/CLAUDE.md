@@ -124,6 +124,8 @@ All mounted at /modules/kitchen/. Auto-generate MCP tools with naming: kitchen__
 | POST | /stock/aliases | save_stock_alias | Save receipt text alias |
 | POST | /stock/bulk | bulk_update_stock | Batch update from receipt parsing |
 | POST | /stock/add | add_stock_item | Create single item via inventory-stock peer |
+| PUT | /stock/{id} | update_stock_item | Update stock item qty/unit/location/expiry |
+| DELETE | /stock/{id} | delete_stock_item | Remove stock item + clean metadata |
 
 ### Recipes
 | Method | Path | MCP name | Description |
@@ -132,6 +134,9 @@ All mounted at /modules/kitchen/. Auto-generate MCP tools with naming: kitchen__
 | GET | /recipes/{id} | get_recipe | Full recipe with ingredients, nutrition, cook summary |
 | POST | /recipes | create_recipe | Create new recipe |
 | PUT | /recipes/{id} | update_recipe | Update recipe metadata and/or ingredients |
+| POST | /recipes/full | create_recipe_full | Create recipe with full primitive composition |
+| PUT | /recipes/{id}/full | update_recipe_full | Update recipe with full primitive composition |
+| DELETE | /recipes/{id} | delete_recipe | Delete recipe (preserves Workflow primitive) |
 | GET | /recipes/can-make | list_can_make | Recipes makeable from current stock |
 | GET | /recipes/{id}/stock-check | recipe_stock_check | Per-ingredient stock status |
 
@@ -148,12 +153,18 @@ All mounted at /modules/kitchen/. Auto-generate MCP tools with naming: kitchen__
 | GET | /meal-plan/{week} | get_meal_plan | Get or create plan (Monday ISO date) |
 | PUT | /meal-plan/{week}/entry | set_meal_plan_entry | Upsert a meal slot entry |
 | GET | /meal-plan/{week}/shopping-list | get_shopping_list | Aggregated ingredients minus stock |
+| DELETE | /meal-plan/{week}/entry/{id} | delete_meal_plan_entry | Delete single meal plan entry |
 
 ### Cook Log
 | Method | Path | MCP name | Description |
 |--------|------|----------|-------------|
 | POST | /cook-log | record_cook_session | Record session, auto-deduct stock |
 | GET | /cook-log | list_cook_log | History with filters |
+
+### Catalogue
+| Method | Path | MCP name | Description |
+|--------|------|----------|-------------|
+| GET | /catalogue/search | search_catalogue | Search catalogue with optional type filter |
 
 ### Shopping List (persistent)
 | Method | Path | MCP name | Description |
@@ -185,7 +196,9 @@ sidebar instead of appearing as views in the shell sidebar.
 | /kitchen | KitchenHome | Dashboard: greeting, today's plan, quick-look widgets |
 | /kitchen/larder | KitchenLarder | Three-column stock view (Pantry/Fridge/Freezer) + add item form |
 | /kitchen/recipes | KitchenRecipes | Two-pane: recipe list with status dots + detail pane |
+| /kitchen/recipes/new | KitchenRecipeNew | Recipe builder (create mode) |
 | /kitchen/recipes/:id | KitchenRecipeDetail | Standalone recipe detail (deep-link) |
+| /kitchen/recipes/:id/edit | KitchenRecipeEdit | Recipe builder (edit mode, pre-populated) |
 | /kitchen/meal-plan | KitchenMealPlan | Weekly grid with click-to-edit + shopping sidebar |
 | /kitchen/shopping | KitchenShoppingList | Persistent list with checkboxes + add panel |
 | /kitchen/cook-log | KitchenCookLog | Cooking history (accessible by URL, not in sidebar) |
@@ -212,10 +225,24 @@ sidebar instead of appearing as views in the shell sidebar.
 - Shopping list has two systems: meal-plan-derived (auto-calculated) and persistent (manual + recipe-derived)
 
 
+### Orchestrated Recipe Creation (K9a)
+
+The kitchen backend now creates catalogue primitives directly via `CatalogueClient`:
+- `POST /recipes/full` — one API call creates Material primitives (for new ingredients),
+  a Workflow primitive (with relationships to materials/techniques/tools), pins to
+  inventory, and creates kitchen_recipes + kitchen_recipe_ingredients rows.
+- `PUT /recipes/{id}/full` — same orchestration for updates.
+- `GET /catalogue/search` — proxy to Core search with optional type filter.
+
+This is a departure from the original "kitchen never calls Core" rule — the kitchen
+backend now imports `get_catalogue_client` from `makestack_sdk` and creates primitives
+directly. This is intentional for the recipe builder UX.
+
+
 ## Current State
 
-K8 complete: persistent shopping list (7 endpoints), stock add endpoint,
-meal plan recipe title join, frontend rebuild (two-pane recipes, click-to-edit
-meal plan, persistent shopping list view, fixed KitchenHome data shapes, fixed
-KitchenLarder with add item form and expiry badges). CLAUDE.md rebuilt.
-138 passing tests. 28 MCP tools. TypeScript: 0 errors.
+K9 in progress: orchestrated recipe CRUD (7 new endpoints), recipe builder UI,
+stock edit/delete, cook log record form, meal plan clear entry.
+Backend: 138 passing tests. 35 MCP tools. TypeScript: 0 errors.
+Frontend: RecipeBuilder, IngredientSearch, StockItemDialog, RecordCookPanel.
+New views: /kitchen/recipes/new, /kitchen/recipes/:id/edit.

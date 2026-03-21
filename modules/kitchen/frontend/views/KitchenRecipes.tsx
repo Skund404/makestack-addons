@@ -5,10 +5,10 @@
  * Right: selected recipe detail with stock-check per ingredient.
  */
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { Loader2, Clock, Users } from 'lucide-react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Loader2, Clock, Users, Plus, Pencil, Trash2, ShoppingCart } from 'lucide-react'
 import { kitchenApi, fmtQty } from '../api'
-import type { CanMakeResponse, CanMakeResult } from '../api'
+import type { CanMakeResult } from '../api'
 
 function statusColor(recipe: { can_make: boolean; missing_count: number }): string {
   if (recipe.can_make) return '#22c55e'        // green
@@ -60,12 +60,21 @@ export function KitchenRecipes() {
       {/* Left pane — recipe list */}
       <div className="w-56 shrink-0 border-r border-border flex flex-col bg-surface">
         <div className="px-3 py-2.5 border-b border-border">
-          <h2
-            className="text-lg"
-            style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
-          >
-            Recipes
-          </h2>
+          <div className="flex items-center justify-between">
+            <h2
+              className="text-lg"
+              style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+            >
+              Recipes
+            </h2>
+            <button
+              onClick={() => { window.location.href = '/kitchen/recipes/new' }}
+              className="flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded bg-accent/10 text-accent hover:bg-accent/20 transition-colors"
+              data-testid="new-recipe-btn"
+            >
+              <Plus size={10} /> New
+            </button>
+          </div>
           <p className="text-[10px] text-text-faint">{recipes.length} recipes</p>
         </div>
         <div className="flex-1 overflow-y-auto">
@@ -115,14 +124,18 @@ export function KitchenRecipes() {
             Select a recipe
           </div>
         ) : (
-          <RecipeDetailPane recipeId={selected} />
+          <RecipeDetailPane recipeId={selected} onDeleted={() => setSelectedId(null)} />
         )}
       </div>
     </div>
   )
 }
 
-function RecipeDetailPane({ recipeId }: { recipeId: string }) {
+function RecipeDetailPane({ recipeId, onDeleted }: { recipeId: string; onDeleted: () => void }) {
+  const queryClient = useQueryClient()
+  const [deleting, setDeleting] = useState(false)
+  const [addingShopping, setAddingShopping] = useState(false)
+
   const { data: recipe, isLoading } = useQuery({
     queryKey: ['kitchen-recipe', recipeId],
     queryFn: () => kitchenApi.getRecipe(recipeId),
@@ -136,6 +149,32 @@ function RecipeDetailPane({ recipeId }: { recipeId: string }) {
     enabled: !!recipe,
   })
 
+  const handleDelete = async () => {
+    if (!confirm('Delete this recipe? The catalogue entry will be preserved.')) return
+    setDeleting(true)
+    try {
+      await kitchenApi.deleteRecipe(recipeId)
+      await queryClient.invalidateQueries({ queryKey: ['kitchen-recipes'] })
+      onDeleted()
+    } catch {
+      // silently fail
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  const handleAddToShopping = async () => {
+    setAddingShopping(true)
+    try {
+      await kitchenApi.addFromRecipe(recipeId)
+      await queryClient.invalidateQueries({ queryKey: ['kitchen-shopping'] })
+    } catch {
+      // silently fail
+    } finally {
+      setAddingShopping(false)
+    }
+  }
+
   if (isLoading || !recipe) {
     return (
       <div className="flex items-center justify-center py-12 text-text-muted gap-2">
@@ -147,13 +186,42 @@ function RecipeDetailPane({ recipeId }: { recipeId: string }) {
 
   return (
     <div className="p-5 max-w-xl">
-      {/* Title */}
-      <h1
-        className="text-[25px] mb-2 leading-tight"
-        style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
-      >
-        {recipe.title}
-      </h1>
+      {/* Title + action buttons */}
+      <div className="flex items-start gap-3 mb-2">
+        <h1
+          className="text-[25px] flex-1 leading-tight"
+          style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+        >
+          {recipe.title}
+        </h1>
+        <div className="flex items-center gap-1 shrink-0 mt-1">
+          <button
+            onClick={() => { window.location.href = `/kitchen/recipes/${recipeId}/edit` }}
+            className="p-1.5 rounded text-text-faint hover:text-accent hover:bg-accent/10 transition-colors"
+            title="Edit recipe"
+            data-testid="recipe-edit-btn"
+          >
+            <Pencil size={13} />
+          </button>
+          <button
+            onClick={handleAddToShopping}
+            disabled={addingShopping}
+            className="p-1.5 rounded text-text-faint hover:text-accent hover:bg-accent/10 transition-colors disabled:opacity-50"
+            title="Add missing ingredients to shopping list"
+          >
+            <ShoppingCart size={13} />
+          </button>
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            className="p-1.5 rounded text-text-faint hover:text-red-400 hover:bg-red-400/10 transition-colors disabled:opacity-50"
+            title="Delete recipe"
+            data-testid="recipe-delete-btn"
+          >
+            <Trash2 size={13} />
+          </button>
+        </div>
+      </div>
 
       {/* Meta badges */}
       <div className="flex items-center gap-2 mb-4 flex-wrap">

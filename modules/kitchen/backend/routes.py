@@ -21,6 +21,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from makestack_sdk.userdb import get_module_userdb_factory, ModuleUserDB
 from makestack_sdk.peers import PeerModules, get_peer_modules
+from makestack_sdk.catalogue_client import (
+    CatalogueClient,
+    get_catalogue_client,
+    CoreUnavailableError,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -62,6 +67,9 @@ StockAliasCreate = _m.StockAliasCreate
 ShoppingItemCreate = _m.ShoppingItemCreate
 ShoppingItemUpdate = _m.ShoppingItemUpdate
 StockItemCreate = _m.StockItemCreate
+RecipeFullCreate = _m.RecipeFullCreate
+RecipeIngredientInput = _m.RecipeIngredientInput
+StockItemUpdate = _m.StockItemUpdate
 
 # Nutrition calculator
 calculate_recipe_nutrition = _n.calculate_recipe_nutrition
@@ -361,6 +369,184 @@ async def stock_check_recipe(
         "missing_count": missing_count,
         "ingredients": ingredients,
     }
+
+
+# ---------------------------------------------------------------------------
+# POST /recipes/full — orchestrated recipe creation with primitive composition
+# MUST remain before GET /recipes/{recipe_id} — FastAPI matches in declaration
+# order, so "full" would otherwise be treated as a recipe_id wildcard.
+# ---------------------------------------------------------------------------
+
+
+@router.post("/recipes/full", status_code=201)
+async def create_recipe_full(
+    body: RecipeFullCreate,
+    db: ModuleUserDB = Depends(get_db),
+    catalogue: CatalogueClient = Depends(get_catalogue_client),
+    peers: PeerModules = Depends(get_peer_modules),
+):
+    """Create a complete recipe with primitive composition.
+
+    1. For each ingredient without catalogue_path → create a Material primitive
+    2. Create a Workflow primitive with relationships to techniques/tools/materials
+    3. Pin the Workflow to inventory
+    4. Create kitchen_recipes + kitchen_recipe_ingredients rows
+    """
+    from backend.app.models import PrimitiveCreate
+
+    # Step 1: resolve ingredients — create Material primitives for new ones
+    resolved_ingredients: list[dict] = []
+    for ing in body.ingredients:
+        cat_path = ing.catalogue_path
+        if not cat_path:
+            # Create new Material primitive
+            try:
+                prim = await catalogue.create_primitive(PrimitiveCreate(
+                    type="material",
+                    name=ing.name,
+                    description=f"Kitchen ingredient: {ing.name}",
+                    tags=["kitchen", "ingredient"],
+                    domain="kitchen",
+                ))
+                cat_path = prim.path
+            except CoreUnavailableError:
+                raise HTTPException(
+                    status_code=503,
+                    detail={
+                        "error": "Core unavailable — cannot create new ingredient primitives",
+                        "suggestion": "Retry when Core is connected, or use existing catalogue_paths",
+                    },
+                )
+        resolved_ingredients.append({
+            "catalogue_path": cat_path,
+            "name": ing.name,
+            "quantity": ing.quantity,
+            "unit": ing.unit,
+            "notes": ing.notes,
+        })
+
+    # Step 2: build relationships list for Workflow
+    relationships: list[dict] = []
+    for ing_data in resolved_ingredients:
+        relationships.append({
+            "relationship_type": "uses_material",
+            "target_path": ing_data["catalogue_path"],
+        })
+    for tech_path in body.techniques:
+        relationships.append({
+            "relationship_type": "uses_technique",
+            "target_path": tech_path,
+        })
+    for tool_path in body.tools:
+        relationships.append({
+            "relationship_type": "uses_tool",
+            "target_path": tool_path,
+        })
+
+    # Step 3: build steps for Workflow
+    workflow_steps = [
+        {"order": i + 1, "title": step_text}
+        for i, step_text in enumerate(body.steps)
+    ]
+
+    # Step 4: create Workflow primitive
+    workflow_id: str | None = None
+    try:
+        wf = await catalogue.create_primitive(PrimitiveCreate(
+            type="workflow",
+            name=body.title,
+            description=body.description,
+            tags=body.tags + (["kitchen", "recipe"] if "recipe" not in body.tags else ["kitchen"]),
+            domain="kitchen",
+            steps=workflow_steps if workflow_steps else None,
+            relationships=relationships,
+            properties={
+                k: v for k, v in {
+                    "cuisine_tag": body.cuisine_tag,
+                    "prep_time_mins": body.prep_time_mins,
+                    "cook_time_mins": body.cook_time_mins,
+                    "servings": body.servings,
+                    "difficulty": body.difficulty,
+                }.items() if v
+            } or None,
+        ))
+        workflow_id = wf.path
+    except CoreUnavailableError:
+        # Proceed without workflow primitive — kitchen row still useful
+        pass
+
+    # Step 5: create kitchen_recipes row
+    recipe_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+
+    await db.execute(
+        """
+        INSERT INTO kitchen_recipes
+            (id, title, description, workflow_id, cuisine_tag,
+             prep_time_mins, cook_time_mins, servings, notes, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            recipe_id, body.title, body.description, workflow_id, body.cuisine_tag,
+            body.prep_time_mins, body.cook_time_mins, body.servings, body.notes, now, now,
+        ],
+    )
+
+    # Step 6: insert ingredient rows
+    for ing_data in resolved_ingredients:
+        await db.execute(
+            """
+            INSERT INTO kitchen_recipe_ingredients
+                (id, recipe_id, catalogue_path, name, quantity, unit, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                str(uuid.uuid4()), recipe_id, ing_data["catalogue_path"],
+                ing_data["name"], ing_data["quantity"], ing_data["unit"],
+                ing_data["notes"],
+            ],
+        )
+
+    return await _fetch_recipe_full(db, recipe_id)
+
+
+# ---------------------------------------------------------------------------
+# DELETE /recipes/{recipe_id}
+# MUST remain before GET /recipes/{recipe_id} for the same route-ordering reason.
+# ---------------------------------------------------------------------------
+
+
+@router.delete("/recipes/{recipe_id}")
+async def delete_recipe(
+    recipe_id: str,
+    db: ModuleUserDB = Depends(get_db),
+):
+    """Delete a recipe and its ingredients/nutrition. Preserves the Workflow primitive."""
+    existing = await db.fetch_one(
+        "SELECT id FROM kitchen_recipes WHERE id = ?", [recipe_id]
+    )
+    if not existing:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "Recipe not found",
+                "recipe_id": recipe_id,
+                "suggestion": "Use GET /recipes to list available recipes",
+            },
+        )
+
+    # Cascade delete kitchen data (preserve Workflow primitive in catalogue)
+    await db.execute(
+        "DELETE FROM kitchen_recipe_ingredients WHERE recipe_id = ?", [recipe_id]
+    )
+    await db.execute(
+        "DELETE FROM kitchen_recipe_nutrition WHERE recipe_id = ?", [recipe_id]
+    )
+    await db.execute(
+        "DELETE FROM kitchen_recipes WHERE id = ?", [recipe_id]
+    )
+
+    return {"deleted": True, "id": recipe_id}
 
 
 @router.get("/recipes/{recipe_id}")
@@ -1456,3 +1642,343 @@ async def bulk_update_stock(
             )
 
     return {"updated": updated, "created": created, "failed": failed}
+
+
+@router.put("/recipes/{recipe_id}/full")
+async def update_recipe_full(
+    recipe_id: str,
+    body: RecipeFullCreate,
+    db: ModuleUserDB = Depends(get_db),
+    catalogue: CatalogueClient = Depends(get_catalogue_client),
+):
+    """Update recipe with full primitive composition.
+
+    Creates new Material primitives for ingredients without catalogue_path.
+    Updates the linked Workflow primitive if one exists.
+    Replaces kitchen_recipe_ingredients.
+    """
+    from backend.app.models import PrimitiveCreate, PrimitiveUpdate
+
+    existing = await db.fetch_one(
+        "SELECT * FROM kitchen_recipes WHERE id = ?", [recipe_id]
+    )
+    if not existing:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "Recipe not found",
+                "recipe_id": recipe_id,
+                "suggestion": "Use GET /recipes to list available recipes",
+            },
+        )
+
+    # Resolve ingredients
+    resolved_ingredients: list[dict] = []
+    for ing in body.ingredients:
+        cat_path = ing.catalogue_path
+        if not cat_path:
+            try:
+                prim = await catalogue.create_primitive(PrimitiveCreate(
+                    type="material",
+                    name=ing.name,
+                    description=f"Kitchen ingredient: {ing.name}",
+                    tags=["kitchen", "ingredient"],
+                    domain="kitchen",
+                ))
+                cat_path = prim.path
+            except CoreUnavailableError:
+                raise HTTPException(
+                    status_code=503,
+                    detail={
+                        "error": "Core unavailable — cannot create new ingredient primitives",
+                        "suggestion": "Retry when Core is connected",
+                    },
+                )
+        resolved_ingredients.append({
+            "catalogue_path": cat_path,
+            "name": ing.name,
+            "quantity": ing.quantity,
+            "unit": ing.unit,
+            "notes": ing.notes,
+        })
+
+    # Update Workflow primitive if linked
+    workflow_id = existing["workflow_id"]
+    if workflow_id:
+        try:
+            wf_prim = await catalogue.get_primitive(workflow_id)
+            relationships: list[dict] = []
+            for ing_data in resolved_ingredients:
+                relationships.append({
+                    "relationship_type": "uses_material",
+                    "target_path": ing_data["catalogue_path"],
+                })
+            for tech_path in body.techniques:
+                relationships.append({
+                    "relationship_type": "uses_technique",
+                    "target_path": tech_path,
+                })
+            for tool_path in body.tools:
+                relationships.append({
+                    "relationship_type": "uses_tool",
+                    "target_path": tool_path,
+                })
+
+            workflow_steps = [
+                {"order": i + 1, "title": step_text}
+                for i, step_text in enumerate(body.steps)
+            ]
+
+            await catalogue.update_primitive(
+                workflow_id,
+                PrimitiveUpdate(
+                    id=wf_prim.id,
+                    type=wf_prim.type,
+                    name=body.title,
+                    slug=wf_prim.slug,
+                    description=body.description,
+                    tags=body.tags + (["kitchen", "recipe"] if "recipe" not in body.tags else ["kitchen"]),
+                    steps=workflow_steps if workflow_steps else None,
+                    relationships=relationships,
+                    properties={
+                        k: v for k, v in {
+                            "cuisine_tag": body.cuisine_tag,
+                            "prep_time_mins": body.prep_time_mins,
+                            "cook_time_mins": body.cook_time_mins,
+                            "servings": body.servings,
+                            "difficulty": body.difficulty,
+                        }.items() if v
+                    } or None,
+                ),
+            )
+        except (CoreUnavailableError, Exception):
+            pass  # Best-effort update of the Workflow primitive
+
+    # Update kitchen_recipes row
+    now = datetime.now(timezone.utc).isoformat()
+    await db.execute(
+        """
+        UPDATE kitchen_recipes
+        SET title=?, description=?, cuisine_tag=?, prep_time_mins=?,
+            cook_time_mins=?, servings=?, notes=?, updated_at=?
+        WHERE id=?
+        """,
+        [
+            body.title, body.description, body.cuisine_tag, body.prep_time_mins,
+            body.cook_time_mins, body.servings, body.notes, now, recipe_id,
+        ],
+    )
+
+    # Replace ingredients
+    await db.execute(
+        "DELETE FROM kitchen_recipe_ingredients WHERE recipe_id = ?", [recipe_id]
+    )
+    for ing_data in resolved_ingredients:
+        await db.execute(
+            """
+            INSERT INTO kitchen_recipe_ingredients
+                (id, recipe_id, catalogue_path, name, quantity, unit, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                str(uuid.uuid4()), recipe_id, ing_data["catalogue_path"],
+                ing_data["name"], ing_data["quantity"], ing_data["unit"],
+                ing_data["notes"],
+            ],
+        )
+
+    return await _fetch_recipe_full(db, recipe_id)
+
+
+# ---------------------------------------------------------------------------
+# K9a: GET /catalogue/search — proxy to CatalogueClient
+# ---------------------------------------------------------------------------
+
+
+@router.get("/catalogue/search")
+async def search_catalogue(
+    q: str = Query(..., description="Search query"),
+    type: str | None = Query(None, description="Filter by primitive type (material/tool/technique/workflow)"),
+    catalogue: CatalogueClient = Depends(get_catalogue_client),
+):
+    """Search the catalogue with optional type filter. Kitchen-friendly response."""
+    try:
+        results = await catalogue.search(q)
+    except CoreUnavailableError:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "Core unavailable — catalogue search disabled",
+                "suggestion": "Retry when Core is connected",
+            },
+        )
+
+    if type:
+        results = [r for r in results if r.type == type]
+
+    return {
+        "results": [
+            {
+                "path": r.path,
+                "name": r.name,
+                "type": r.type,
+                "description": r.description,
+                "tags": r.tags,
+            }
+            for r in results
+        ],
+        "total": len(results) if not type else len(results),
+    }
+
+
+# ---------------------------------------------------------------------------
+# K9a: PUT /stock/{item_id} — update single stock item
+# ---------------------------------------------------------------------------
+
+
+@router.put("/stock/{item_id}")
+async def update_stock_item(
+    item_id: str,
+    body: StockItemUpdate,
+    db: ModuleUserDB = Depends(get_db),
+    peers: PeerModules = Depends(get_peer_modules),
+):
+    """Update a stock item's quantity/unit/location via inventory-stock peer + expiry metadata."""
+    if not peers.is_installed("inventory-stock"):
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "inventory-stock peer not installed",
+                "suggestion": "Install the inventory-stock module first",
+            },
+        )
+
+    # Verify item exists
+    stock_row = await db.fetch_one(
+        "SELECT id, quantity, unit, location FROM inventory_stock_items WHERE id = ?",
+        [item_id],
+    )
+    if not stock_row:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "Stock item not found",
+                "stock_item_id": item_id,
+                "suggestion": "Use GET /stock to list available items",
+            },
+        )
+
+    # Build peer update body (only changed fields)
+    peer_body: dict = {}
+    if body.quantity is not None:
+        peer_body["quantity"] = body.quantity
+    if body.unit is not None:
+        peer_body["unit"] = body.unit
+    if body.location is not None:
+        peer_body["location"] = body.location
+
+    if peer_body:
+        await peers.call(
+            "inventory-stock", "PUT", f"/stock/{item_id}", body=peer_body,
+        )
+
+    # Update expiry metadata
+    if body.expiry_date is not None:
+        now = datetime.now(timezone.utc).isoformat()
+        meta = await db.fetch_one(
+            "SELECT id FROM kitchen_stock_metadata WHERE stock_item_id = ?",
+            [item_id],
+        )
+        if meta:
+            await db.execute(
+                "UPDATE kitchen_stock_metadata SET expiry_date = ?, updated_at = ? "
+                "WHERE stock_item_id = ?",
+                [body.expiry_date or None, now, item_id],
+            )
+        elif body.expiry_date:
+            await db.execute(
+                "INSERT INTO kitchen_stock_metadata "
+                "(id, stock_item_id, expiry_date, updated_at) VALUES (?, ?, ?, ?)",
+                [str(uuid.uuid4()), item_id, body.expiry_date, now],
+            )
+
+    # Return updated item
+    row = await db.fetch_one(
+        """
+        SELECT isi.id, inv.catalogue_path, isi.quantity, isi.unit, isi.location,
+               isi.notes, m.expiry_date, m.frozen_on_date
+        FROM inventory_stock_items isi
+        JOIN inventory inv ON inv.id = isi.inventory_id
+        LEFT JOIN kitchen_stock_metadata m ON m.stock_item_id = isi.id
+        WHERE isi.id = ?
+        """,
+        [item_id],
+    )
+    return dict(row) if row else {"id": item_id, "updated": True}
+
+
+# ---------------------------------------------------------------------------
+# K9a: DELETE /stock/{item_id} — remove stock item
+# ---------------------------------------------------------------------------
+
+
+@router.delete("/stock/{item_id}")
+async def delete_stock_item(
+    item_id: str,
+    db: ModuleUserDB = Depends(get_db),
+    peers: PeerModules = Depends(get_peer_modules),
+):
+    """Remove a stock item via inventory-stock peer + clean kitchen_stock_metadata."""
+    if not peers.is_installed("inventory-stock"):
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "inventory-stock peer not installed",
+                "suggestion": "Install the inventory-stock module first",
+            },
+        )
+
+    # Clean kitchen metadata first
+    await db.execute(
+        "DELETE FROM kitchen_stock_metadata WHERE stock_item_id = ?", [item_id]
+    )
+
+    # Delete via peer
+    await peers.call("inventory-stock", "DELETE", f"/stock/{item_id}")
+
+    return {"deleted": True, "id": item_id}
+
+
+# ---------------------------------------------------------------------------
+# K9a: DELETE /meal-plan/{week}/entry/{entry_id}
+# ---------------------------------------------------------------------------
+
+
+@router.delete("/meal-plan/{week}/entry/{entry_id}")
+async def delete_meal_plan_entry(
+    week: str,
+    entry_id: str,
+    db: ModuleUserDB = Depends(get_db),
+):
+    """Delete a single meal plan entry."""
+    existing = await db.fetch_one(
+        "SELECT e.id FROM kitchen_meal_plan_entries e "
+        "JOIN kitchen_meal_plan p ON e.plan_id = p.id "
+        "WHERE e.id = ? AND p.week_start = ?",
+        [entry_id, week],
+    )
+    if not existing:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "Meal plan entry not found",
+                "entry_id": entry_id,
+                "week": week,
+                "suggestion": "Use GET /meal-plan/{week} to see available entries",
+            },
+        )
+
+    await db.execute(
+        "DELETE FROM kitchen_meal_plan_entries WHERE id = ?", [entry_id]
+    )
+    return {"deleted": True, "id": entry_id}
