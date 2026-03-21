@@ -116,71 +116,68 @@ export function KitchenLarder() {
         </button>
       </div>
 
-      {/* Three-column grid */}
-      <div className="flex flex-1 min-h-0 overflow-hidden relative">
-        {isLoading ? (
-          <div className="flex items-center justify-center w-full py-12 text-text-muted gap-2">
-            <Loader2 size={14} className="animate-spin" />
-            <span className="text-xs">Loading stock...</span>
-          </div>
-        ) : (
-          COLUMNS.map((col) => {
-            const colItems = items.filter((item) => item.location === col.key)
-            return (
-              <div
-                key={col.key}
-                className="flex-1 min-w-0 flex flex-col border-r border-border last:border-r-0 bg-surface"
-              >
-                {/* Column header */}
+      {/* Three-column grid + side panel */}
+      <div className="flex flex-1 min-h-0 overflow-hidden">
+
+        {/* Columns */}
+        <div className="flex flex-1 min-w-0 overflow-hidden">
+          {isLoading ? (
+            <div className="flex items-center justify-center w-full py-12 text-text-muted gap-2">
+              <Loader2 size={14} className="animate-spin" />
+              <span className="text-xs">Loading stock...</span>
+            </div>
+          ) : (
+            COLUMNS.map((col) => {
+              const colItems = items.filter((item) => item.location === col.key)
+              return (
                 <div
-                  className="px-3 py-2 border-b border-border shrink-0"
-                  style={{ borderTopWidth: 3, borderTopColor: col.color, borderTopStyle: 'solid' }}
+                  key={col.key}
+                  className="flex-1 min-w-0 flex flex-col border-r border-border last:border-r-0 bg-surface"
                 >
-                  <p className="text-[10px] font-medium uppercase tracking-wider" style={{ color: col.color }}>
-                    {col.label}
-                  </p>
-                  <p className="text-[10px] mt-0.5" style={{ color: col.color }}>
-                    {colItems.length} items
-                  </p>
+                  {/* Column header */}
+                  <div
+                    className="px-3 py-2 border-b border-border shrink-0"
+                    style={{ borderTopWidth: 3, borderTopColor: col.color, borderTopStyle: 'solid' }}
+                  >
+                    <p className="text-[10px] font-medium uppercase tracking-wider" style={{ color: col.color }}>
+                      {col.label}
+                    </p>
+                    <p className="text-[10px] mt-0.5" style={{ color: col.color }}>
+                      {colItems.length} items
+                    </p>
+                  </div>
+
+                  {/* Items */}
+                  <div className="flex-1 overflow-y-auto">
+                    {colItems.length === 0 ? (
+                      <p className="text-xs text-text-faint italic p-3">Empty</p>
+                    ) : (
+                      colItems.map((item) => (
+                        <div
+                          key={item.id}
+                          className="flex items-center gap-2 px-3 py-2 border-b border-border/50"
+                        >
+                          <span className="flex-1 text-xs text-text truncate">{nameFromPath(item.catalogue_path)}</span>
+                          <span className="text-[11px] text-text-faint shrink-0">
+                            {fmtQty(item.quantity, item.unit)}
+                          </span>
+                          {expiryBadge(item.expiry_date)}
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
+              )
+            })
+          )}
+        </div>
 
-                {/* Items */}
-                <div className="flex-1 overflow-y-auto">
-                  {colItems.length === 0 ? (
-                    <p className="text-xs text-text-faint italic p-3">Empty</p>
-                  ) : (
-                    colItems.map((item) => (
-                      <div
-                        key={item.id}
-                        className="flex items-center gap-2 px-3 py-2 border-b border-border/50"
-                      >
-                        <span className="flex-1 text-xs text-text truncate">{nameFromPath(item.catalogue_path)}</span>
-                        <span className="text-[11px] text-text-faint shrink-0">
-                          {fmtQty(item.quantity, item.unit)}
-                        </span>
-                        {expiryBadge(item.expiry_date)}
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            )
-          })
-        )}
-
-        {/* Backdrop — closes panel on outside click */}
-        {addPanelOpen && (
-          <div
-            className="absolute inset-0 z-10"
-            onClick={() => setAddPanelOpen(false)}
-          />
-        )}
-
-        {/* Add item slide-out panel */}
+        {/* Add item side panel — pushes columns, no overlap */}
         <div
-          className="absolute right-0 top-0 bottom-0 w-64 flex flex-col border-l border-border bg-surface shadow-lg transition-transform duration-200 z-20"
-          style={{ transform: addPanelOpen ? 'translateX(0)' : 'translateX(100%)' }}
+          className="shrink-0 flex flex-col border-l border-border bg-surface overflow-hidden transition-[width] duration-200"
+          style={{ width: addPanelOpen ? 240 : 0 }}
         >
+          <div className="w-60 flex flex-col flex-1 overflow-hidden">
           <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0">
             <p className="text-[10px] font-medium uppercase tracking-wider text-text-faint">Add Item</p>
             <button onClick={() => setAddPanelOpen(false)} className="text-text-faint hover:text-text">
@@ -264,7 +261,9 @@ export function KitchenLarder() {
               Custom fields — coming soon
             </p>
           </div>
+          </div>
         </div>
+
       </div>
     </div>
   )
