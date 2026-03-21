@@ -1,0 +1,81 @@
+{
+  "name": "electronics",
+  "display_name": "Electronics Lab",
+  "version": "0.1.0",
+  "description": "Circuit simulator with schematic editor, DC analysis, and AI-powered explanation",
+  "author": "Makestack",
+  "license": "proprietary",
+  "shell_compatibility": ">=0.1.0",
+  "has_backend": true,
+  "has_frontend": true,
+
+  "peer_modules": {},
+
+  "userdb_tables": [
+    { "name": "electronics_circuits",               "description": "Circuit metadata (name, description, canvas size, sim settings)" },
+    { "name": "electronics_components",             "description": "Placed component instances within a circuit" },
+    { "name": "electronics_nets",                   "description": "Named electrical nodes (nets) within a circuit" },
+    { "name": "electronics_pins",                   "description": "Pin-to-net connections forming the circuit topology" },
+    { "name": "electronics_sim_results",            "description": "Simulation run metadata and status" },
+    { "name": "electronics_sim_node_results",       "description": "Per-net voltage results from simulation" },
+    { "name": "electronics_sim_component_results",  "description": "Per-component current/power/voltage results from simulation" }
+  ],
+
+  "api_endpoints": [
+    { "method": "GET",    "path": "/circuits",                          "name": "list_circuits",       "description": "List all circuits with pagination" },
+    { "method": "POST",   "path": "/circuits",                          "name": "create_circuit",      "description": "Create a new empty circuit" },
+    { "method": "GET",    "path": "/circuits/{circuit_id}",             "name": "get_circuit",         "description": "Full circuit with components, nets, pins, and latest simulation result" },
+    { "method": "PUT",    "path": "/circuits/{circuit_id}",             "name": "update_circuit",      "description": "Update circuit name, description, or canvas size" },
+    { "method": "DELETE", "path": "/circuits/{circuit_id}",             "name": "delete_circuit",      "description": "Delete circuit and all children" },
+
+    { "method": "POST",   "path": "/circuits/{circuit_id}/components",  "name": "add_component",       "description": "Place a component on the canvas (auto-assigns ref designator and creates pins)" },
+    { "method": "PUT",    "path": "/components/{component_id}",         "name": "update_component",    "description": "Move, rotate, or change value of a placed component" },
+    { "method": "DELETE", "path": "/components/{component_id}",         "name": "delete_component",    "description": "Remove a component and its pins from the circuit" },
+
+    { "method": "POST",   "path": "/circuits/{circuit_id}/nets",        "name": "create_net",          "description": "Create a named net (electrical node)" },
+    { "method": "POST",   "path": "/circuits/{circuit_id}/connect",     "name": "connect_pins",        "description": "Connect a component pin to a net (auto-creates net if needed)" },
+    { "method": "DELETE", "path": "/pins/{pin_id}/disconnect",          "name": "disconnect_pin",      "description": "Remove a pin's net connection" },
+
+    { "method": "POST",   "path": "/circuits/{circuit_id}/simulate",    "name": "run_simulation",      "description": "Run DC operating point analysis and return results" },
+    { "method": "GET",    "path": "/circuits/{circuit_id}/results",     "name": "get_results",         "description": "Get the latest simulation results for a circuit" },
+    { "method": "GET",    "path": "/circuits/{circuit_id}/results/{result_id}", "name": "get_result_detail", "description": "Get a specific simulation result with full breakdown" },
+
+    { "method": "GET",    "path": "/library",                           "name": "list_library",        "description": "List available built-in component types" },
+    { "method": "GET",    "path": "/library/{component_type}",          "name": "get_component_type",  "description": "Get full detail for a component type (pins, symbol, defaults)" }
+  ],
+
+  "views": [
+    { "id": "electronics-home",       "label": "Home",       "route": "/electronics",            "icon": "Zap",          "sort_order": 0 },
+    { "id": "electronics-circuits",   "label": "Circuits",   "route": "/electronics/circuits",   "icon": "CircuitBoard", "sort_order": 1 },
+    { "id": "electronics-editor",     "label": "Editor",     "route": "/electronics/circuits/:id","icon": "PenTool",     "sort_order": 2 },
+    { "id": "electronics-components", "label": "Components", "route": "/electronics/components",  "icon": "Box",         "sort_order": 3 }
+  ],
+
+  "panels": [
+    { "id": "electronics-recent-circuits", "label": "Recent Circuits", "size": "half" }
+  ],
+
+  "app_mode": {
+    "enabled": true,
+    "title": "Electronics Lab",
+    "subtitle": "Circuit simulator",
+    "sidebar_width": 200,
+    "home_route": "/electronics",
+    "nav_items": [
+      { "id": "electronics-home",       "label": "Home",       "icon": "Zap",          "route": "/electronics" },
+      { "id": "electronics-circuits",   "label": "Circuits",   "icon": "CircuitBoard", "route": "/electronics/circuits" },
+      { "id": "electronics-components", "label": "Components", "icon": "Box",          "route": "/electronics/components" }
+    ],
+    "theme": {
+      "sidebar_bg": "#0a1628",
+      "sidebar_text": "#94a3b8",
+      "sidebar_active_bg": "#1e293b",
+      "accent": "#38bdf8"
+    }
+  },
+
+  "keywords": [],
+  "dependencies": { "python": ["numpy>=1.24.0"], "node": [] },
+  "core_api_permissions": [],
+  "config_defaults": {}
+}

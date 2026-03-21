@@ -1,0 +1,9 @@
+{
+  "name": "electronics",
+  "version": "0.1.0",
+  "type": "module",
+  "display_name": "Electronics Lab",
+  "description": "Circuit simulator with schematic editor, DC analysis, and AI-powered explanation",
+  "author": "Makestack",
+  "shell_compatibility": ">=0.1.0"
+}
