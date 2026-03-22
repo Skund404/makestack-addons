@@ -1,14 +1,38 @@
 /**
- * Simulation panel — run button + results table (right sidebar in editor).
+ * Simulation panel — run button, sim type selector, results table (right sidebar).
  */
-import { Play, AlertCircle, CheckCircle } from 'lucide-react'
+import { Play, AlertCircle, CheckCircle, Download } from 'lucide-react'
 import type { SimResult, CircuitComponent } from '../api'
+import { useState } from 'react'
 
 interface SimulationPanelProps {
   simResult: SimResult | null
   isSimulating: boolean
-  onSimulate: () => void
+  onSimulate: (simType: string, params?: Record<string, unknown>) => void
   selectedComponent: CircuitComponent | null
+  onExportSpice?: () => void
+  onExportBom?: () => void
+}
+
+const SIM_TYPES = [
+  { value: 'op', label: 'DC Operating Point' },
+  { value: 'ac', label: 'AC Analysis' },
+  { value: 'dc_sweep', label: 'DC Sweep' },
+  { value: 'transient', label: 'Transient' },
+  { value: 'monte_carlo', label: 'Monte Carlo' },
+  { value: 'param_sweep', label: 'Parameter Sweep' },
+  { value: 'temp_sweep', label: 'Temperature Sweep' },
+]
+
+const REGION_COLORS: Record<string, string> = {
+  active: '#22c55e',
+  forward: '#22c55e',
+  saturation: '#eab308',
+  saturation_mosfet: '#22c55e',
+  cutoff: '#ef4444',
+  reverse: '#64748b',
+  linear: '#3b82f6',
+  breakdown: '#ef4444',
 }
 
 function formatValue(v: number, unit: string): string {
@@ -35,13 +59,29 @@ function formatValue(v: number, unit: string): string {
 
 export function SimulationPanel({
   simResult, isSimulating, onSimulate, selectedComponent,
+  onExportSpice, onExportBom,
 }: SimulationPanelProps) {
+  const [simType, setSimType] = useState('op')
+
+  // Extract NR metadata from result_data if present
+  const nrIterations = (simResult?.result_data as Record<string, unknown>)?.nr_iterations as number | undefined
+  const convergenceMethod = (simResult?.result_data as Record<string, unknown>)?.convergence_method as string | undefined
+
   return (
-    <div className="w-56 border-l border-zinc-700 bg-zinc-900/50 flex flex-col shrink-0 overflow-y-auto">
-      {/* Run button */}
-      <div className="p-3 border-b border-zinc-700">
+    <div className="w-60 border-l border-zinc-700 bg-zinc-900/50 flex flex-col shrink-0 overflow-y-auto">
+      {/* Sim type + Run */}
+      <div className="p-3 border-b border-zinc-700 space-y-2">
+        <select
+          value={simType}
+          onChange={(e) => setSimType(e.target.value)}
+          className="w-full text-xs bg-zinc-800 border border-zinc-600 rounded px-2 py-1.5 text-zinc-300"
+        >
+          {SIM_TYPES.map((st) => (
+            <option key={st.value} value={st.value}>{st.label}</option>
+          ))}
+        </select>
         <button
-          onClick={onSimulate}
+          onClick={() => onSimulate(simType)}
           disabled={isSimulating}
           className="flex w-full items-center justify-center gap-2 rounded-md bg-emerald-700 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-600 disabled:opacity-50 transition-colors"
         >
@@ -49,6 +89,22 @@ export function SimulationPanel({
           {isSimulating ? 'Simulating...' : 'Simulate'}
         </button>
       </div>
+
+      {/* Export buttons */}
+      {(onExportSpice || onExportBom) && (
+        <div className="p-3 border-b border-zinc-700 flex gap-2">
+          {onExportSpice && (
+            <button onClick={onExportSpice} className="flex items-center gap-1 text-[10px] text-zinc-400 hover:text-sky-400">
+              <Download size={10} /> SPICE
+            </button>
+          )}
+          {onExportBom && (
+            <button onClick={onExportBom} className="flex items-center gap-1 text-[10px] text-zinc-400 hover:text-sky-400">
+              <Download size={10} /> BOM
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Status */}
       {simResult && (
@@ -74,6 +130,19 @@ export function SimulationPanel({
               {simResult.error_message}
             </p>
           )}
+          {/* NR convergence info */}
+          {nrIterations !== undefined && (
+            <div className="text-[10px] text-zinc-500 mt-1">
+              NR: {nrIterations} iterations
+              {convergenceMethod && convergenceMethod !== 'direct' && (
+                <span className="text-amber-400"> ({convergenceMethod})</span>
+              )}
+            </div>
+          )}
+          {/* Sim type badge */}
+          <div className="text-[10px] text-zinc-500 mt-1">
+            Type: {simResult.sim_type}
+          </div>
         </div>
       )}
 
@@ -109,7 +178,20 @@ export function SimulationPanel({
               .sort((a, b) => a.ref_designator.localeCompare(b.ref_designator))
               .map((cr) => (
                 <div key={cr.id} className="text-xs">
-                  <div className="font-mono text-zinc-300 font-medium">{cr.ref_designator}</div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-zinc-300 font-medium">{cr.ref_designator}</span>
+                    {cr.operating_region && (
+                      <span
+                        className="text-[9px] px-1 rounded font-mono"
+                        style={{
+                          color: REGION_COLORS[cr.operating_region] || '#94a3b8',
+                          backgroundColor: `${REGION_COLORS[cr.operating_region] || '#94a3b8'}20`,
+                        }}
+                      >
+                        {cr.operating_region}
+                      </span>
+                    )}
+                  </div>
                   <div className="flex justify-between text-zinc-400 pl-2">
                     <span>I</span>
                     <span className="font-mono text-sky-300">{formatValue(cr.current, 'A')}</span>

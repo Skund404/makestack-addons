@@ -148,9 +148,29 @@ The solver implements Modified Nodal Analysis with four simulation modes:
 - Initial conditions from DC OP
 - Parameters: t_stop, t_step (auto if None)
 
+### Newton-Raphson Nonlinear (E3)
+- Iterative linearization for diodes, BJTs, MOSFETs
+- Convergence aids: voltage damping, Gmin stepping, source stepping
+- Operating region detection and reporting
+- Nonlinear transient: NR inner loop at each timestep
+
+### Monte Carlo (sim_type: "monte_carlo")
+- Tolerance analysis with component value variations
+- Parameters: mc_tolerances, mc_runs, mc_seed
+
+### Parameter Sweep (sim_type: "param_sweep")
+- Varies a model parameter or component value across a range
+- Parameters: ps_component_id, ps_param, ps_start, ps_stop, ps_steps
+
+### Temperature Sweep (sim_type: "temp_sweep")
+- Solves at each temperature point
+- Parameters: temp_start, temp_stop, temp_steps
+
 ### Component support
-- Resistors, capacitors, inductors, voltage sources, current sources
-- Error cases: no ground, singular matrix, unconnected pins, zero/negative values
+- Linear: resistors, capacitors, inductors, voltage sources, current sources, ground
+- Nonlinear: diodes (1N4148, 1N4001), zener, LED, NPN/PNP BJT (2N3904, 2N3906), NMOS/PMOS FET (2N7000), ideal op-amp
+- MCU: microcontroller with configurable GPIO, sandboxed Python tick function
+- Error cases: no ground, singular matrix, unconnected pins, zero/negative values, NR non-convergence
 
 ## Code Standards
 
@@ -163,20 +183,34 @@ The solver implements Modified Nodal Analysis with four simulation modes:
 
 ## Build Order
 
-E1 DC linear foundation (current) →
-E2 reactive components (capacitor, inductor, AC/transient) →
-E3 active components (diode, BJT, op-amp, nonlinear solver) →
-E4 microcontroller behaviour (Python tick model) →
-E5 community library (datasheet ingestion, federated catalogue)
+E1 DC linear foundation →
+E1b Wire segments, DRC, regions →
+E2 Reactive components (capacitor, inductor, AC/transient) →
+E3 Active components (diode, BJT, MOSFET, op-amp, Newton-Raphson solver) →
+E4 Subcircuits + advanced analysis (Monte Carlo, parameter sweep, temperature sweep) →
+E5 Export (SPICE, BOM, CSV) + circuit templates →
+E6 Educational features (calculators, MNA explainer) →
+E7 MCU co-simulation (sandboxed Python tick functions) →
+E8 Frontend (all component symbols, simulation panel) →
+E9 Apple 1 templates + final polish
 
 ## Current State
 
-E2 complete: 160 tests passing.
+E9 complete: 360 tests passing, frontend fully updated.
 - E1: DC solver, circuit CRUD, component placement, wiring, simulation (16 endpoints)
 - E1b: Wire segments/junctions, DRC, regions, value parsing, Manhattan routing (12 endpoints)
 - E2: Capacitor + inductor, AC/DC sweep/transient analysis, sweep data storage
-- 6 component types: resistor, capacitor, inductor, voltage_source, current_source, ground
-- Frontend: schematic editor with symbols for all 6 types, wire layer, component library
+- E3: Newton-Raphson nonlinear solver, diode/BJT/MOSFET/op-amp models with presets
+- E4: Subcircuit definitions + flattening, Monte Carlo, parameter sweep, temperature sweep
+- E5: SPICE netlist export, BOM (JSON/CSV), waveform CSV, circuit JSON bundle, 12 circuit templates
+- E6: Calculators (voltage divider, LED resistor, RC filter, BJT bias), MNA step-by-step explainer
+- E7: MCU component with sandboxed Python tick functions, program CRUD API
+- E8: Frontend: all 15 component SVG symbols, grouped palette, sim type selector, operating region display, NR convergence info, export buttons, template gallery, model preset badges
+- 15 component types: resistor, capacitor, inductor, voltage_source, current_source, ground, diode, zener, led, npn_bjt, pnp_bjt, nmos, pmos, opamp, mcu
+- 12 templates: voltage_divider, led_driver, common_emitter_amp, cmos_inverter, zener_regulator, opamp_inverting, apple1_clock, apple1_power_supply, apple1_reset, half_wave_rectifier, emitter_follower, current_mirror
+- 6 migrations, ~60 API endpoints
+- Backend files: solver.py, device_models.py, components.py, models.py, routes.py, subcircuit.py, exporters.py, templates.py, education.py, mcu_sandbox.py
+- Frontend files: ComponentSymbol.tsx (15 symbols), ComponentPalette.tsx (grouped), SimulationPanel.tsx (sim type + NR + regions), SchematicCanvas.tsx, api.ts (~60 typed endpoints), ElectronicsHome.tsx (templates), ElectronicsComponents.tsx (grouped + presets)
 
 ## Test Command
 

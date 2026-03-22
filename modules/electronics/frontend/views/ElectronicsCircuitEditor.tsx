@@ -136,10 +136,10 @@ export function ElectronicsCircuitEditor({ id }: EditorProps) {
     moveComponentMut.mutate({ id, x, y })
   }, [moveComponentMut])
 
-  const handleSimulate = useCallback(async () => {
+  const handleSimulate = useCallback(async (simType: string, params?: Record<string, unknown>) => {
     setIsSimulating(true)
     try {
-      const result = await electronicsApi.simulate(circuitId)
+      const result = await electronicsApi.simulate(circuitId, { sim_type: simType, ...params })
       setSimResult(result)
     } catch {
       // Error is shown in the panel
@@ -147,6 +147,32 @@ export function ElectronicsCircuitEditor({ id }: EditorProps) {
       setIsSimulating(false)
     }
   }, [circuitId])
+
+  const handleExportSpice = useCallback(async () => {
+    try {
+      const data = await electronicsApi.exportSpice(circuitId)
+      const blob = new Blob([data.spice], { type: 'text/plain' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${circuit?.name || 'circuit'}.cir`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch { /* ignore */ }
+  }, [circuitId, circuit?.name])
+
+  const handleExportBom = useCallback(async () => {
+    try {
+      const data = await electronicsApi.exportBom(circuitId)
+      const blob = new Blob([JSON.stringify(data.bom, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${circuit?.name || 'circuit'}-bom.json`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch { /* ignore */ }
+  }, [circuitId, circuit?.name])
 
   const selectedComponent = circuit?.components.find((c) => c.id === selectedComponentId) || null
 
@@ -211,6 +237,8 @@ export function ElectronicsCircuitEditor({ id }: EditorProps) {
           isSimulating={isSimulating}
           onSimulate={handleSimulate}
           selectedComponent={selectedComponent}
+          onExportSpice={handleExportSpice}
+          onExportBom={handleExportBom}
         />
       </div>
     </div>

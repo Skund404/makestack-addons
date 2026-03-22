@@ -33,6 +33,8 @@ def _load(name: str, relpath: str):
 migration_001 = _load("mig001", "backend/migrations/001_create_tables.py")
 migration_002 = _load("mig002", "backend/migrations/002_e1b_wire_catalogue.py")
 migration_003 = _load("mig003", "backend/migrations/003_e2_sweep_waveform.py")
+migration_004 = _load("mig004", "backend/migrations/004_e3_operating_region.py")
+migration_005 = _load("mig005", "backend/migrations/005_e4_subcircuits.py")
 routes_mod = _load("routes", "backend/routes.py")
 
 router = routes_mod.router
@@ -50,6 +52,8 @@ async def db():
     await migration_001.up(userdb)
     await migration_002.up(userdb)
     await migration_003.up(userdb)
+    await migration_004.up(userdb)
+    await migration_005.up(userdb)
     yield userdb
     await userdb.teardown()
 

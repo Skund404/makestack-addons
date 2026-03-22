@@ -147,7 +147,9 @@ export function SchematicCanvas({
     for (const comp of components) {
       const dx = pt.x - comp.x
       const dy = pt.y - comp.y
-      if (Math.abs(dx) < 50 && Math.abs(dy) < 25) {
+      const hitH = comp.component_type === 'mcu' ? 40 : comp.component_type === 'opamp' ? 30 : 25
+      const hitW = comp.component_type === 'mcu' ? 50 : 50
+      if (Math.abs(dx) < hitW && Math.abs(dy) < hitH) {
         onSelectComponent(comp.id)
         setDraggingId(comp.id)
         dragOffset.current = { dx, dy }
@@ -203,10 +205,13 @@ export function SchematicCanvas({
   }
 
   // Build component result map for symbol overlays
-  const compResults = new Map<string, { current: number; power: number; voltage_drop: number }>()
+  const compResults = new Map<string, { current: number; power: number; voltage_drop: number; operating_region?: string }>()
   if (simResult?.status === 'complete' && simResult.component_results) {
     for (const cr of simResult.component_results) {
-      compResults.set(cr.component_id, { current: cr.current, power: cr.power, voltage_drop: cr.voltage_drop })
+      compResults.set(cr.component_id, {
+        current: cr.current, power: cr.power, voltage_drop: cr.voltage_drop,
+        operating_region: cr.operating_region || undefined,
+      })
     }
   }
 

@@ -59,6 +59,9 @@ AutoRouteRequest = _m.AutoRouteRequest
 RegionCreate = _m.RegionCreate
 RegionUpdate = _m.RegionUpdate
 RegionMemberAdd = _m.RegionMemberAdd
+SubcircuitCreate = _m.SubcircuitCreate
+SubcircuitInstanceCreate = _m.SubcircuitInstanceCreate
+MCUProgramUpload = _m.MCUProgramUpload
 
 _vp = _elec_import("value_parser")
 parse_engineering_value = _vp.parse_engineering_value
@@ -72,10 +75,16 @@ COMPONENT_TYPES = _c.COMPONENT_TYPES
 CircuitGraph = _solver.CircuitGraph
 ComponentInstance = _solver.ComponentInstance
 SolverError = _solver.SolverError
+_exporters = _elec_import("exporters")
+_templates = _elec_import("templates")
+_education = _elec_import("education")
 solve_dc_op = _solver.solve_dc_op
 solve_ac = _solver.solve_ac
 solve_dc_sweep = _solver.solve_dc_sweep
 solve_transient = _solver.solve_transient
+solve_parameter_sweep = _solver.solve_parameter_sweep
+solve_monte_carlo = _solver.solve_monte_carlo
+solve_temp_sweep = _solver.solve_temp_sweep
 
 
 # ---------------------------------------------------------------------------
@@ -99,6 +108,9 @@ get_db = get_module_userdb_factory(
         "electronics_regions",
         "electronics_region_members",
         "electronics_sweep_points",
+        "electronics_subcircuits",
+        "electronics_subcircuit_instances",
+        "electronics_mcu_programs",
     ],
 )
 
@@ -267,12 +279,15 @@ async def add_component(
         ct = get_component_type(body.component_type)
         unit = ct["value_unit"] if ct else ""
 
+    # Serialize model_params to properties JSON
+    properties = _json.dumps(body.model_params) if body.model_params else '{}'
+
     comp_id = _uuid()
     await db.execute(
         """INSERT INTO electronics_components
         (id, circuit_id, catalogue_path, ref_designator, component_type, value, unit, x, y, rotation, properties, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{}', ?)""",
-        [comp_id, circuit_id, body.catalogue_path, ref_designator, body.component_type, value, unit, body.x, body.y, body.rotation, _now()],
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        [comp_id, circuit_id, body.catalogue_path, ref_designator, body.component_type, value, unit, body.x, body.y, body.rotation, properties, _now()],
     )
 
     # Create pin rows
@@ -332,6 +347,18 @@ async def update_component(
                     val = str(parsed)
             updates.append(f"{field} = ?")
             params.append(val)
+
+    # Handle model_params update
+    if body.model_params is not None:
+        # Merge with existing properties
+        existing_props = {}
+        try:
+            existing_props = _json.loads(row.get("properties", "{}") or "{}")
+        except (ValueError, TypeError):
+            pass
+        existing_props.update(body.model_params)
+        updates.append("properties = ?")
+        params.append(_json.dumps(existing_props))
 
     if updates:
         params.append(component_id)
@@ -497,6 +524,12 @@ async def run_simulation(
             return await _run_dc_sweep(sim_id, circuit_id, body, graph, start_time, db)
         elif body.sim_type == "transient":
             return await _run_transient(sim_id, circuit_id, body, graph, start_time, db)
+        elif body.sim_type == "monte_carlo":
+            return await _run_monte_carlo(sim_id, circuit_id, body, graph, start_time, db)
+        elif body.sim_type == "param_sweep":
+            return await _run_param_sweep(sim_id, circuit_id, body, graph, start_time, db)
+        elif body.sim_type == "temp_sweep":
+            return await _run_temp_sweep(sim_id, circuit_id, body, graph, start_time, db)
         else:
             # Default: DC operating point
             return await _run_dc_op(sim_id, circuit_id, body, graph, start_time, db)
@@ -601,18 +634,59 @@ async def _build_solver_graph(circuit_id: str, db: ModuleUserDB) -> CircuitGraph
         except ValueError:
             value = 0.0
 
+        # Parse model_params from properties JSON
+        props_str = comp.get("properties", "{}")
+        try:
+            params = _json.loads(props_str) if props_str else {}
+        except (ValueError, TypeError):
+            params = {}
+
         solver_components.append(ComponentInstance(
             id=comp["id"],
             component_type=comp["component_type"],
             value=value,
             pins=pin_map.get(comp["id"], {}),
+            params=params,
         ))
 
-    return CircuitGraph(
+    graph = CircuitGraph(
         ground_net_id=ground_net_id,
         nodes=node_ids,
         components=solver_components,
     )
+
+    # Flatten subcircuit instances into the graph
+    sub_instances = await db.fetch_all(
+        "SELECT * FROM electronics_subcircuit_instances WHERE circuit_id = ?",
+        [circuit_id],
+    )
+    if sub_instances:
+        _sub_mod = _elec_import("subcircuit")
+        sub_defs = {}
+        for si in sub_instances:
+            sid = si["subcircuit_id"]
+            if sid not in sub_defs:
+                row = await db.fetch_one("SELECT * FROM electronics_subcircuits WHERE id = ?", [sid])
+                if row:
+                    sub_defs[sid] = _sub_mod.SubcircuitDef(
+                        id=row["id"],
+                        name=row["name"],
+                        description=row["description"],
+                        port_pins=_json.loads(row["port_pins"]),
+                        circuit_json=_json.loads(row["circuit_json"]),
+                    )
+
+        instances = [
+            _sub_mod.SubcircuitInstance(
+                id=si["id"],
+                subcircuit_id=si["subcircuit_id"],
+                port_mapping=_json.loads(si["port_mapping"]),
+            )
+            for si in sub_instances
+        ]
+        graph = _sub_mod.flatten_all_subcircuits(graph, instances, sub_defs, _solver)
+
+    return graph
 
 
 async def _run_dc_op(sim_id, circuit_id, body, graph, start_time, db):
@@ -634,11 +708,13 @@ async def _run_dc_op(sim_id, circuit_id, body, graph, start_time, db):
         )
 
     for comp_id, cr in result.component_results.items():
+        extra_json = _json.dumps(cr.extra_data) if cr.extra_data else '{}'
         await db.execute(
             """INSERT INTO electronics_sim_component_results
-            (id, sim_result_id, component_id, current, power, voltage_drop)
-            VALUES (?, ?, ?, ?, ?, ?)""",
-            [_uuid(), sim_id, comp_id, cr.current, cr.power, cr.voltage_drop],
+            (id, sim_result_id, component_id, current, power, voltage_drop, operating_region, extra_data)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            [_uuid(), sim_id, comp_id, cr.current, cr.power, cr.voltage_drop,
+             cr.operating_region, extra_json],
         )
 
     return await _get_sim_result_full(sim_id, db)
@@ -798,6 +874,630 @@ def _atan2_deg(y: float, x: float) -> float:
     """atan2 in degrees."""
     import math
     return math.degrees(math.atan2(y, x))
+
+
+# ===================================================================
+# ADVANCED ANALYSIS (E4)
+# ===================================================================
+
+
+async def _run_monte_carlo(sim_id, circuit_id, body, graph, start_time, db):
+    """Run Monte Carlo tolerance analysis."""
+    tolerances = body.mc_tolerances or {}
+    result = solve_monte_carlo(graph, tolerances, num_runs=body.mc_runs, seed=body.mc_seed)
+    duration_ms = int((time.monotonic() - start_time) * 1000)
+
+    metadata = result.solver_metadata
+    metadata["node_statistics"] = result.node_statistics
+    metadata["component_statistics"] = result.component_statistics
+
+    await db.execute(
+        """INSERT INTO electronics_sim_results
+        (id, circuit_id, sim_type, status, error_message, result_data, ran_at, duration_ms)
+        VALUES (?, ?, ?, 'complete', NULL, ?, ?, ?)""",
+        [sim_id, circuit_id, "monte_carlo", _json.dumps(metadata), _now(), duration_ms],
+    )
+
+    return {
+        "id": sim_id,
+        "circuit_id": circuit_id,
+        "sim_type": "monte_carlo",
+        "status": "complete",
+        "duration_ms": duration_ms,
+        "num_runs": result.num_runs,
+        "node_statistics": result.node_statistics,
+        "component_statistics": result.component_statistics,
+    }
+
+
+async def _run_param_sweep(sim_id, circuit_id, body, graph, start_time, db):
+    """Run parameter sweep analysis."""
+    if not body.ps_component_id:
+        raise SolverError("ps_component_id is required for param_sweep")
+
+    result = solve_parameter_sweep(
+        graph,
+        component_id=body.ps_component_id,
+        param_name=body.ps_param,
+        start=body.ps_start,
+        stop=body.ps_stop,
+        steps=body.ps_steps,
+    )
+    duration_ms = int((time.monotonic() - start_time) * 1000)
+
+    await db.execute(
+        """INSERT INTO electronics_sim_results
+        (id, circuit_id, sim_type, status, error_message, result_data, ran_at, duration_ms)
+        VALUES (?, ?, ?, 'complete', NULL, ?, ?, ?)""",
+        [sim_id, circuit_id, "param_sweep", _json.dumps(result.solver_metadata), _now(), duration_ms],
+    )
+
+    # Store sweep points
+    for i, (val, res) in enumerate(zip(result.values, result.results)):
+        for net_id, voltage in res.node_voltages.items():
+            await db.execute(
+                """INSERT INTO electronics_sweep_points
+                (id, sim_result_id, point_index, parameter_value, net_id,
+                 voltage_real, voltage_imag, component_id, current, power)
+                VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL)""",
+                [_uuid(), sim_id, i, val, net_id, voltage],
+            )
+        for comp_id, cr in res.component_results.items():
+            await db.execute(
+                """INSERT INTO electronics_sweep_points
+                (id, sim_result_id, point_index, parameter_value, net_id,
+                 voltage_real, voltage_imag, component_id, current, power)
+                VALUES (?, ?, ?, ?, NULL, NULL, NULL, ?, ?, ?)""",
+                [_uuid(), sim_id, i, val, comp_id, cr.current, cr.power],
+            )
+
+    return await _get_sim_result_with_sweep(sim_id, db)
+
+
+async def _run_temp_sweep(sim_id, circuit_id, body, graph, start_time, db):
+    """Run temperature sweep analysis."""
+    result = solve_temp_sweep(
+        graph,
+        t_start=body.temp_start,
+        t_stop=body.temp_stop,
+        steps=body.temp_steps,
+    )
+    duration_ms = int((time.monotonic() - start_time) * 1000)
+
+    await db.execute(
+        """INSERT INTO electronics_sim_results
+        (id, circuit_id, sim_type, status, error_message, result_data, ran_at, duration_ms)
+        VALUES (?, ?, ?, 'complete', NULL, ?, ?, ?)""",
+        [sim_id, circuit_id, "temp_sweep", _json.dumps(result.solver_metadata), _now(), duration_ms],
+    )
+
+    for i, (temp, res) in enumerate(zip(result.temperatures, result.results)):
+        for net_id, voltage in res.node_voltages.items():
+            await db.execute(
+                """INSERT INTO electronics_sweep_points
+                (id, sim_result_id, point_index, parameter_value, net_id,
+                 voltage_real, voltage_imag, component_id, current, power)
+                VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL)""",
+                [_uuid(), sim_id, i, temp, net_id, voltage],
+            )
+
+    return await _get_sim_result_with_sweep(sim_id, db)
+
+
+# ===================================================================
+# SUBCIRCUITS (E4)
+# ===================================================================
+
+
+@router.post("/subcircuits", status_code=201)
+async def create_subcircuit(
+    body: SubcircuitCreate,
+    db: ModuleUserDB = Depends(get_db),
+):
+    """Create a reusable subcircuit definition."""
+    sub_id = _uuid()
+    now = _now()
+    await db.execute(
+        """INSERT INTO electronics_subcircuits
+        (id, name, description, port_pins, circuit_json, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        [sub_id, body.name, body.description,
+         _json.dumps(body.port_pins), _json.dumps(body.circuit_json),
+         now, now],
+    )
+    return {
+        "id": sub_id,
+        "name": body.name,
+        "description": body.description,
+        "port_pins": body.port_pins,
+        "circuit_json": body.circuit_json,
+    }
+
+
+@router.get("/subcircuits")
+async def list_subcircuits(
+    db: ModuleUserDB = Depends(get_db),
+):
+    """List all subcircuit definitions."""
+    rows = await db.fetch_all("SELECT * FROM electronics_subcircuits ORDER BY name")
+    items = []
+    for r in rows:
+        items.append({
+            "id": r["id"],
+            "name": r["name"],
+            "description": r["description"],
+            "port_pins": _json.loads(r["port_pins"]),
+            "created_at": r["created_at"],
+        })
+    return {"items": items}
+
+
+@router.get("/subcircuits/{subcircuit_id}")
+async def get_subcircuit(
+    subcircuit_id: str,
+    db: ModuleUserDB = Depends(get_db),
+):
+    """Get a subcircuit definition with its internal netlist."""
+    row = await db.fetch_one("SELECT * FROM electronics_subcircuits WHERE id = ?", [subcircuit_id])
+    if not row:
+        raise HTTPException(404, detail={"error": "Subcircuit not found"})
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "description": row["description"],
+        "port_pins": _json.loads(row["port_pins"]),
+        "circuit_json": _json.loads(row["circuit_json"]),
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
+
+
+@router.delete("/subcircuits/{subcircuit_id}")
+async def delete_subcircuit(
+    subcircuit_id: str,
+    db: ModuleUserDB = Depends(get_db),
+):
+    """Delete a subcircuit definition."""
+    row = await db.fetch_one("SELECT id FROM electronics_subcircuits WHERE id = ?", [subcircuit_id])
+    if not row:
+        raise HTTPException(404, detail={"error": "Subcircuit not found"})
+    await db.execute("DELETE FROM electronics_subcircuit_instances WHERE subcircuit_id = ?", [subcircuit_id])
+    await db.execute("DELETE FROM electronics_subcircuits WHERE id = ?", [subcircuit_id])
+    return {"deleted": True}
+
+
+@router.post("/circuits/{circuit_id}/subcircuit-instances", status_code=201)
+async def add_subcircuit_instance(
+    circuit_id: str,
+    body: SubcircuitInstanceCreate,
+    db: ModuleUserDB = Depends(get_db),
+):
+    """Place a subcircuit instance in a circuit."""
+    circuit = await db.fetch_one("SELECT id FROM electronics_circuits WHERE id = ?", [circuit_id])
+    if not circuit:
+        raise HTTPException(404, detail={"error": "Circuit not found"})
+
+    sub = await db.fetch_one("SELECT id FROM electronics_subcircuits WHERE id = ?", [body.subcircuit_id])
+    if not sub:
+        raise HTTPException(404, detail={"error": "Subcircuit definition not found"})
+
+    inst_id = _uuid()
+    await db.execute(
+        """INSERT INTO electronics_subcircuit_instances
+        (id, circuit_id, subcircuit_id, port_mapping, x, y, rotation, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        [inst_id, circuit_id, body.subcircuit_id,
+         _json.dumps(body.port_mapping), body.x, body.y, body.rotation, _now()],
+    )
+    return {
+        "id": inst_id,
+        "circuit_id": circuit_id,
+        "subcircuit_id": body.subcircuit_id,
+        "port_mapping": body.port_mapping,
+    }
+
+
+@router.get("/circuits/{circuit_id}/subcircuit-instances")
+async def list_subcircuit_instances(
+    circuit_id: str,
+    db: ModuleUserDB = Depends(get_db),
+):
+    """List subcircuit instances in a circuit."""
+    rows = await db.fetch_all(
+        """SELECT si.*, s.name as subcircuit_name
+           FROM electronics_subcircuit_instances si
+           JOIN electronics_subcircuits s ON si.subcircuit_id = s.id
+           WHERE si.circuit_id = ?""",
+        [circuit_id],
+    )
+    return {"items": [
+        {
+            "id": r["id"],
+            "subcircuit_id": r["subcircuit_id"],
+            "subcircuit_name": r["subcircuit_name"],
+            "port_mapping": _json.loads(r["port_mapping"]),
+            "x": r["x"],
+            "y": r["y"],
+        }
+        for r in rows
+    ]}
+
+
+@router.delete("/subcircuit-instances/{instance_id}")
+async def delete_subcircuit_instance(
+    instance_id: str,
+    db: ModuleUserDB = Depends(get_db),
+):
+    """Remove a subcircuit instance from a circuit."""
+    row = await db.fetch_one("SELECT id FROM electronics_subcircuit_instances WHERE id = ?", [instance_id])
+    if not row:
+        raise HTTPException(404, detail={"error": "Subcircuit instance not found"})
+    await db.execute("DELETE FROM electronics_subcircuit_instances WHERE id = ?", [instance_id])
+    return {"deleted": True}
+
+
+# ===================================================================
+# EXPORT (E5)
+# ===================================================================
+
+
+@router.get("/circuits/{circuit_id}/export/spice")
+async def export_spice(
+    circuit_id: str,
+    db: ModuleUserDB = Depends(get_db),
+):
+    """Export circuit as SPICE netlist (.cir format)."""
+    circuit = await db.fetch_one("SELECT * FROM electronics_circuits WHERE id = ?", [circuit_id])
+    if not circuit:
+        raise HTTPException(404, detail={"error": "Circuit not found"})
+
+    components = await db.fetch_all(
+        "SELECT * FROM electronics_components WHERE circuit_id = ?", [circuit_id])
+    nets = await db.fetch_all(
+        "SELECT * FROM electronics_nets WHERE circuit_id = ?", [circuit_id])
+    pins = await db.fetch_all(
+        """SELECT p.*, c.circuit_id FROM electronics_pins p
+           JOIN electronics_components c ON p.component_id = c.id
+           WHERE c.circuit_id = ?""", [circuit_id])
+
+    spice = _exporters.export_spice(
+        [dict(c) for c in components],
+        [dict(n) for n in nets],
+        [dict(p) for p in pins],
+        circuit_name=circuit["name"],
+    )
+    return {"circuit_id": circuit_id, "format": "spice", "content": spice}
+
+
+@router.get("/circuits/{circuit_id}/export/bom")
+async def export_bom(
+    circuit_id: str,
+    format: str = Query("json", pattern="^(json|csv)$"),
+    db: ModuleUserDB = Depends(get_db),
+):
+    """Export Bill of Materials (JSON or CSV)."""
+    circuit = await db.fetch_one("SELECT id FROM electronics_circuits WHERE id = ?", [circuit_id])
+    if not circuit:
+        raise HTTPException(404, detail={"error": "Circuit not found"})
+
+    components = await db.fetch_all(
+        "SELECT * FROM electronics_components WHERE circuit_id = ?", [circuit_id])
+    bom = _exporters.export_bom([dict(c) for c in components])
+
+    if format == "csv":
+        return {"circuit_id": circuit_id, "format": "csv",
+                "content": _exporters.export_bom_csv(bom)}
+    return {"circuit_id": circuit_id, "format": "json", "items": bom}
+
+
+@router.get("/results/{result_id}/export/csv")
+async def export_waveform_csv(
+    result_id: str,
+    db: ModuleUserDB = Depends(get_db),
+):
+    """Export sweep/transient waveform data as CSV."""
+    sim = await db.fetch_one("SELECT * FROM electronics_sim_results WHERE id = ?", [result_id])
+    if not sim:
+        raise HTTPException(404, detail={"error": "Result not found"})
+
+    sweep_rows = await db.fetch_all(
+        "SELECT * FROM electronics_sweep_points WHERE sim_result_id = ? ORDER BY point_index",
+        [result_id])
+
+    # Group into points
+    points: dict[int, dict] = {}
+    for row in sweep_rows:
+        idx = row["point_index"]
+        if idx not in points:
+            points[idx] = {"parameter_value": row["parameter_value"],
+                           "node_voltages": {}, "component_results": {}}
+        if row["net_id"]:
+            points[idx]["node_voltages"][row["net_id"]] = row["voltage_real"]
+        if row["component_id"]:
+            points[idx]["component_results"][row["component_id"]] = {"current": row["current"]}
+
+    sweep_data = sorted(points.values(), key=lambda x: x["parameter_value"])
+    csv_content = _exporters.export_waveform_csv(sweep_data)
+    return {"result_id": result_id, "format": "csv", "content": csv_content}
+
+
+@router.get("/circuits/{circuit_id}/export/bundle")
+async def export_circuit_bundle(
+    circuit_id: str,
+    db: ModuleUserDB = Depends(get_db),
+):
+    """Export full circuit as JSON bundle (for import/sharing)."""
+    circuit = await db.fetch_one("SELECT * FROM electronics_circuits WHERE id = ?", [circuit_id])
+    if not circuit:
+        raise HTTPException(404, detail={"error": "Circuit not found"})
+
+    components = await db.fetch_all(
+        "SELECT * FROM electronics_components WHERE circuit_id = ?", [circuit_id])
+    nets = await db.fetch_all(
+        "SELECT * FROM electronics_nets WHERE circuit_id = ?", [circuit_id])
+    pins = await db.fetch_all(
+        """SELECT p.*, c.circuit_id FROM electronics_pins p
+           JOIN electronics_components c ON p.component_id = c.id
+           WHERE c.circuit_id = ?""", [circuit_id])
+    wires = await db.fetch_all(
+        "SELECT * FROM electronics_wire_segments WHERE circuit_id = ?", [circuit_id])
+
+    bundle = _exporters.export_circuit_bundle(
+        dict(circuit), [dict(c) for c in components],
+        [dict(n) for n in nets], [dict(p) for p in pins],
+        [dict(w) for w in wires],
+    )
+    return bundle
+
+
+# ===================================================================
+# TEMPLATES (E5)
+# ===================================================================
+
+
+@router.get("/templates")
+async def list_templates():
+    """List available circuit templates."""
+    return {"items": _templates.list_templates()}
+
+
+@router.post("/circuits/from-template", status_code=201)
+async def create_from_template(
+    template_id: str = Query(...),
+    name: str = Query(None),
+    db: ModuleUserDB = Depends(get_db),
+):
+    """Create a circuit from a built-in template."""
+    tmpl = _templates.get_template(template_id)
+    if not tmpl:
+        raise HTTPException(404, detail={
+            "error": f"Template '{template_id}' not found",
+            "suggestion": f"Available: {', '.join(_templates.TEMPLATES.keys())}",
+        })
+
+    circuit_name = name or tmpl["circuit"]["name"]
+    circuit_id = _uuid()
+    now = _now()
+
+    await db.execute(
+        """INSERT INTO electronics_circuits
+        (id, name, description, canvas_width, canvas_height, created_at, updated_at)
+        VALUES (?, ?, ?, 1200, 800, ?, ?)""",
+        [circuit_id, circuit_name, tmpl["circuit"].get("description", ""), now, now],
+    )
+
+    # Create nets from template connections
+    net_ids: dict[str, str] = {}  # net_name -> net_id
+
+    for comp_def in tmpl["components"]:
+        for pin_name, net_name in comp_def.get("pins", {}).items():
+            if net_name not in net_ids:
+                net_id = _uuid()
+                net_type = "ground" if net_name.upper() == "GND" else "signal"
+                await db.execute(
+                    "INSERT INTO electronics_nets (id, circuit_id, name, net_type, color) VALUES (?, ?, ?, ?, '')",
+                    [net_id, circuit_id, net_name, net_type],
+                )
+                net_ids[net_name] = net_id
+
+    # Create components and wire pins
+    for comp_def in tmpl["components"]:
+        comp_id = _uuid()
+        ctype = comp_def["type"]
+        value = comp_def.get("value", "")
+        ref = comp_def.get("ref", "")
+        params = comp_def.get("params", {})
+        props_json = _json.dumps(params) if params else "{}"
+
+        await db.execute(
+            """INSERT INTO electronics_components
+            (id, circuit_id, catalogue_path, ref_designator, component_type,
+             value, unit, x, y, rotation, properties, created_at)
+            VALUES (?, ?, '', ?, ?, ?, '', 0, 0, 0, ?, ?)""",
+            [comp_id, circuit_id, ref, ctype, value, props_json, now],
+        )
+
+        # Create and connect pins
+        comp_type_def = get_component_type(ctype)
+        pin_names = comp_type_def["pins"] if comp_type_def else []
+        for pin_name in pin_names:
+            pin_id = _uuid()
+            net_name = comp_def.get("pins", {}).get(pin_name)
+            net_id = net_ids.get(net_name) if net_name else None
+            await db.execute(
+                "INSERT INTO electronics_pins (id, component_id, pin_name, net_id) VALUES (?, ?, ?, ?)",
+                [pin_id, comp_id, pin_name, net_id],
+            )
+
+    return {
+        "id": circuit_id,
+        "name": circuit_name,
+        "template_id": template_id,
+        "components": len(tmpl["components"]),
+    }
+
+
+# ===================================================================
+# MCU CO-SIMULATION (E7)
+# ===================================================================
+
+
+@router.post("/circuits/{circuit_id}/mcu/{component_id}/program")
+async def set_mcu_program(
+    circuit_id: str,
+    component_id: str,
+    body: MCUProgramUpload,
+    db: ModuleUserDB = Depends(get_db),
+):
+    """Set the Python tick function for an MCU component."""
+    _mcu = _elec_import("mcu_sandbox")
+    source_code = body.source_code
+
+    circuit = await db.fetch_one("SELECT id FROM electronics_circuits WHERE id = ?", [circuit_id])
+    if not circuit:
+        raise HTTPException(404, detail={"error": "Circuit not found"})
+
+    comp = await db.fetch_one(
+        "SELECT * FROM electronics_components WHERE id = ? AND circuit_id = ?",
+        [component_id, circuit_id])
+    if not comp:
+        raise HTTPException(404, detail={"error": "Component not found"})
+    if comp["component_type"] != "mcu":
+        raise HTTPException(400, detail={"error": "Component is not an MCU"})
+
+    # Validate by compiling
+    try:
+        _mcu.compile_tick_function(source_code)
+    except _mcu.MCUSandboxError as e:
+        raise HTTPException(400, detail={"error": str(e)})
+
+    now = _now()
+    existing = await db.fetch_one(
+        "SELECT id FROM electronics_mcu_programs WHERE circuit_id = ? AND component_id = ?",
+        [circuit_id, component_id])
+
+    if existing:
+        await db.execute(
+            "UPDATE electronics_mcu_programs SET source_code = ?, updated_at = ? WHERE id = ?",
+            [source_code, now, existing["id"]])
+        prog_id = existing["id"]
+    else:
+        prog_id = _uuid()
+        await db.execute(
+            """INSERT INTO electronics_mcu_programs
+            (id, circuit_id, component_id, source_code, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)""",
+            [prog_id, circuit_id, component_id, source_code, now, now])
+
+    return {"id": prog_id, "component_id": component_id, "status": "compiled"}
+
+
+@router.get("/circuits/{circuit_id}/mcu/{component_id}/program")
+async def get_mcu_program(
+    circuit_id: str,
+    component_id: str,
+    db: ModuleUserDB = Depends(get_db),
+):
+    """Get the current MCU program for a component."""
+    row = await db.fetch_one(
+        "SELECT * FROM electronics_mcu_programs WHERE circuit_id = ? AND component_id = ?",
+        [circuit_id, component_id])
+    if not row:
+        raise HTTPException(404, detail={"error": "No program found for this MCU"})
+    return {
+        "id": row["id"],
+        "component_id": component_id,
+        "source_code": row["source_code"],
+        "updated_at": row["updated_at"],
+    }
+
+
+@router.delete("/circuits/{circuit_id}/mcu/{component_id}/program")
+async def delete_mcu_program(
+    circuit_id: str,
+    component_id: str,
+    db: ModuleUserDB = Depends(get_db),
+):
+    """Delete the MCU program for a component."""
+    row = await db.fetch_one(
+        "SELECT id FROM electronics_mcu_programs WHERE circuit_id = ? AND component_id = ?",
+        [circuit_id, component_id])
+    if not row:
+        raise HTTPException(404, detail={"error": "No program found for this MCU"})
+    await db.execute("DELETE FROM electronics_mcu_programs WHERE id = ?", [row["id"]])
+    return {"deleted": True}
+
+
+# ===================================================================
+# EDUCATIONAL (E6)
+# ===================================================================
+
+
+@router.post("/calculators/voltage-divider")
+async def calc_voltage_divider(
+    v_in: float = Query(...),
+    r1: float = Query(...),
+    r2: float = Query(...),
+):
+    """Calculate voltage divider output."""
+    return _education.voltage_divider(v_in, r1, r2)
+
+
+@router.post("/calculators/led-resistor")
+async def calc_led_resistor(
+    v_supply: float = Query(...),
+    v_led: float = Query(2.0),
+    i_led_ma: float = Query(20.0),
+):
+    """Calculate LED current-limiting resistor value."""
+    return _education.led_resistor(v_supply, v_led, i_led_ma)
+
+
+@router.post("/calculators/rc-filter")
+async def calc_rc_filter(
+    r: float = Query(...),
+    c: float = Query(...),
+):
+    """Calculate RC filter cutoff frequency."""
+    return _education.rc_filter(r, c)
+
+
+@router.post("/calculators/bjt-bias")
+async def calc_bjt_bias(
+    vcc: float = Query(...),
+    ic_ma: float = Query(...),
+    beta: float = Query(100.0),
+    vce: float = Query(None),
+):
+    """Calculate BJT bias resistors for common-emitter configuration."""
+    return _education.bjt_bias(vcc, ic_ma, beta, vce)
+
+
+@router.get("/circuits/{circuit_id}/explain-mna")
+async def explain_mna(
+    circuit_id: str,
+    db: ModuleUserDB = Depends(get_db),
+):
+    """Get step-by-step MNA matrix construction explanation."""
+    circuit = await db.fetch_one("SELECT id FROM electronics_circuits WHERE id = ?", [circuit_id])
+    if not circuit:
+        raise HTTPException(404, detail={"error": "Circuit not found"})
+
+    components = await db.fetch_all(
+        "SELECT * FROM electronics_components WHERE circuit_id = ?", [circuit_id])
+    nets = await db.fetch_all(
+        "SELECT * FROM electronics_nets WHERE circuit_id = ?", [circuit_id])
+    pins = await db.fetch_all(
+        """SELECT p.*, c.circuit_id FROM electronics_pins p
+           JOIN electronics_components c ON p.component_id = c.id
+           WHERE c.circuit_id = ?""", [circuit_id])
+
+    steps = _education.explain_mna(
+        [dict(c) for c in components],
+        [dict(n) for n in nets],
+        [dict(p) for p in pins],
+    )
+    return {"circuit_id": circuit_id, "steps": steps, "total_steps": len(steps)}
 
 
 # ===================================================================
@@ -1343,6 +2043,64 @@ async def get_component_type_detail(component_type: str):
             "suggestion": f"Valid types: {', '.join(COMPONENT_TYPES.keys())}",
         })
     return {"type": component_type, **ct}
+
+
+@router.get("/library/{component_type}/models")
+async def list_component_models(component_type: str):
+    """List available preset models for a component type (e.g. 1N4148 for diode)."""
+    _dm = _elec_import("device_models")
+
+    preset_map = {
+        "diode": _dm.DIODE_PRESETS,
+        "zener": _dm.ZENER_PRESETS,
+        "led": _dm.LED_PRESETS,
+    }
+
+    bjt_map = {"npn_bjt": False, "pnp_bjt": True}
+    mosfet_map = {"nmos": False, "pmos": True}
+
+    if component_type in preset_map:
+        presets = preset_map[component_type]
+        items = []
+        for name, model in presets.items():
+            if name == "default":
+                continue
+            params = {k: v for k, v in model.__dict__.items() if not k.startswith("_")}
+            items.append({"name": name, "params": params})
+        return {"component_type": component_type, "models": items}
+
+    if component_type in bjt_map:
+        items = []
+        for name, (model, is_pnp) in _dm.BJT_PRESETS.items():
+            if name.startswith("default"):
+                continue
+            # Filter by NPN/PNP
+            expected_pnp = bjt_map[component_type]
+            if is_pnp != expected_pnp:
+                continue
+            params = {k: v for k, v in model.__dict__.items() if not k.startswith("_")}
+            items.append({"name": name, "params": params})
+        return {"component_type": component_type, "models": items}
+
+    if component_type in mosfet_map:
+        items = []
+        for name, (model, is_pmos) in _dm.MOSFET_PRESETS.items():
+            if name.startswith("default"):
+                continue
+            expected_pmos = mosfet_map[component_type]
+            if is_pmos != expected_pmos:
+                continue
+            params = {k: v for k, v in model.__dict__.items() if not k.startswith("_")}
+            items.append({"name": name, "params": params})
+        return {"component_type": component_type, "models": items}
+
+    if component_type == "opamp":
+        return {"component_type": "opamp", "models": []}
+
+    ct = get_component_type(component_type)
+    if not ct:
+        raise HTTPException(404, detail={"error": f"Unknown component type: {component_type}"})
+    return {"component_type": component_type, "models": []}
 
 
 # ===================================================================

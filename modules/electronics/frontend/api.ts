@@ -75,6 +75,8 @@ export interface ComponentResult {
   current: number
   power: number
   voltage_drop: number
+  operating_region: string | null
+  extra_data: Record<string, unknown>
 }
 
 export interface SweepNodeVoltage {
@@ -173,6 +175,61 @@ export interface ComponentTypeInfo {
   value_label: string
   default_value: string
   description: string
+  model_params?: Record<string, number>
+  presets?: string[]
+}
+
+// --- E4: Subcircuits ---
+
+export interface Subcircuit {
+  id: string
+  name: string
+  description: string
+  port_pins: string[]
+  circuit_json: Record<string, unknown>
+  created_at: string
+}
+
+export interface SubcircuitInstance {
+  id: string
+  circuit_id: string
+  subcircuit_id: string
+  port_mapping: Record<string, string>
+  x: number
+  y: number
+  rotation: number
+}
+
+// --- E5: Templates ---
+
+export interface CircuitTemplate {
+  id: string
+  name: string
+  description: string
+  category: string
+  component_count: number
+}
+
+// --- E6: Education ---
+
+export interface CalculatorResult {
+  [key: string]: unknown
+}
+
+export interface MNAStep {
+  title: string
+  description: string
+}
+
+// --- E7: MCU ---
+
+export interface MCUProgram {
+  id: string
+  circuit_id: string
+  component_id: string
+  source_code: string
+  status: string
+  created_at: string
 }
 
 // ---------------------------------------------------------------------------
@@ -244,6 +301,17 @@ export const electronicsApi = {
     sweep_steps?: number
     t_stop?: number
     t_step?: number
+    mc_tolerances?: Record<string, Record<string, number>>
+    mc_runs?: number
+    mc_seed?: number
+    ps_component_id?: string
+    ps_param?: string
+    ps_start?: number
+    ps_stop?: number
+    ps_steps?: number
+    temp_start?: number
+    temp_stop?: number
+    temp_steps?: number
   }) =>
     apiPost<SimResult>(`${BASE}/circuits/${circuitId}/simulate`, params ?? { sim_type: 'op' }),
 
@@ -313,4 +381,82 @@ export const electronicsApi = {
 
   removeRegionMember: (regionId: string, memberId: string) =>
     apiDelete<{ deleted: boolean }>(`${BASE}/regions/${regionId}/members/${memberId}`),
+
+  // --- E3: Model presets ---
+  getModelPresets: (type: string) =>
+    apiGet<{ type: string; presets: Record<string, Record<string, number>> }>(
+      `${BASE}/library/${type}/models`
+    ),
+
+  // --- E4: Subcircuits ---
+  listSubcircuits: () =>
+    apiGet<{ items: Subcircuit[] }>(`${BASE}/subcircuits`),
+
+  createSubcircuit: (data: { name: string; description?: string; port_pins: string[]; circuit_json?: Record<string, unknown> }) =>
+    apiPost<Subcircuit>(`${BASE}/subcircuits`, data),
+
+  getSubcircuit: (id: string) =>
+    apiGet<Subcircuit>(`${BASE}/subcircuits/${id}`),
+
+  deleteSubcircuit: (id: string) =>
+    apiDelete<{ deleted: boolean }>(`${BASE}/subcircuits/${id}`),
+
+  addSubcircuitInstance: (circuitId: string, data: {
+    subcircuit_id: string; port_mapping?: Record<string, string>; x?: number; y?: number
+  }) =>
+    apiPost<SubcircuitInstance>(`${BASE}/circuits/${circuitId}/subcircuit-instances`, data),
+
+  listSubcircuitInstances: (circuitId: string) =>
+    apiGet<{ items: SubcircuitInstance[] }>(`${BASE}/circuits/${circuitId}/subcircuit-instances`),
+
+  deleteSubcircuitInstance: (instanceId: string) =>
+    apiDelete<{ deleted: boolean }>(`${BASE}/subcircuit-instances/${instanceId}`),
+
+  // --- E5: Export ---
+  exportSpice: (circuitId: string) =>
+    apiGet<{ spice: string }>(`${BASE}/circuits/${circuitId}/export/spice`),
+
+  exportBom: (circuitId: string) =>
+    apiGet<{ bom: Array<Record<string, unknown>>; total_components: number }>(
+      `${BASE}/circuits/${circuitId}/export/bom`
+    ),
+
+  exportBundle: (circuitId: string) =>
+    apiGet<Record<string, unknown>>(`${BASE}/circuits/${circuitId}/export/bundle`),
+
+  exportWaveformCsv: (resultId: string) =>
+    apiGet<{ csv: string }>(`${BASE}/results/${resultId}/export/csv`),
+
+  // --- E5: Templates ---
+  listTemplates: () =>
+    apiGet<{ items: CircuitTemplate[] }>(`${BASE}/templates`),
+
+  createFromTemplate: (templateId: string) =>
+    apiPost<{ id: string; name: string }>(`${BASE}/circuits/from-template`, { template_id: templateId }),
+
+  // --- E6: Education ---
+  calcVoltageDivider: (data: { v_in: number; r1: number; r2: number }) =>
+    apiPost<CalculatorResult>(`${BASE}/calculators/voltage-divider`, data),
+
+  calcLedResistor: (data: { v_supply: number; v_led: number; i_led_ma: number }) =>
+    apiPost<CalculatorResult>(`${BASE}/calculators/led-resistor`, data),
+
+  calcRcFilter: (data: { r: number; c: number }) =>
+    apiPost<CalculatorResult>(`${BASE}/calculators/rc-filter`, data),
+
+  calcBjtBias: (data: { vcc: number; ic_ma: number; beta: number; vce: number }) =>
+    apiPost<CalculatorResult>(`${BASE}/calculators/bjt-bias`, data),
+
+  explainMna: (circuitId: string) =>
+    apiGet<{ steps: MNAStep[] }>(`${BASE}/circuits/${circuitId}/explain-mna`),
+
+  // --- E7: MCU ---
+  uploadProgram: (circuitId: string, componentId: string, data: { source_code: string }) =>
+    apiPost<MCUProgram>(`${BASE}/circuits/${circuitId}/mcu/${componentId}/program`, data),
+
+  getProgram: (circuitId: string, componentId: string) =>
+    apiGet<MCUProgram>(`${BASE}/circuits/${circuitId}/mcu/${componentId}/program`),
+
+  deleteProgram: (circuitId: string, componentId: string) =>
+    apiDelete<{ deleted: boolean }>(`${BASE}/circuits/${circuitId}/mcu/${componentId}/program`),
 }

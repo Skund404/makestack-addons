@@ -3,7 +3,7 @@
  */
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { Plus, Zap, CircuitBoard } from 'lucide-react'
+import { Plus, Zap, CircuitBoard, BookOpen } from 'lucide-react'
 import { electronicsApi } from '../api'
 import { useState } from 'react'
 
@@ -17,11 +17,24 @@ export function ElectronicsHome() {
     queryFn: electronicsApi.listCircuits,
   })
 
+  const { data: templates } = useQuery({
+    queryKey: ['electronics-templates'],
+    queryFn: electronicsApi.listTemplates,
+  })
+
   const createMutation = useMutation({
     mutationFn: (name: string) => electronicsApi.createCircuit({ name }),
     onSuccess: (circuit) => {
       queryClient.invalidateQueries({ queryKey: ['electronics-circuits'] })
       navigate({ to: `/electronics/circuits/${circuit.id}` })
+    },
+  })
+
+  const templateMutation = useMutation({
+    mutationFn: (templateId: string) => electronicsApi.createFromTemplate(templateId),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['electronics-circuits'] })
+      navigate({ to: `/electronics/circuits/${result.id}` })
     },
   })
 
@@ -57,6 +70,30 @@ export function ElectronicsHome() {
           Create
         </button>
       </div>
+
+      {/* Templates */}
+      {templates?.items && templates.items.length > 0 && (
+        <div className="mb-8">
+          <h2 className="text-lg font-medium mb-3 flex items-center gap-2">
+            <BookOpen size={18} className="text-sky-400" />
+            Templates
+          </h2>
+          <div className="grid grid-cols-2 gap-2">
+            {templates.items.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => templateMutation.mutate(t.id)}
+                disabled={templateMutation.isPending}
+                className="rounded-lg border border-zinc-700 bg-zinc-800/50 p-3 text-left hover:bg-zinc-800 transition-colors"
+              >
+                <div className="text-xs font-medium truncate">{t.name}</div>
+                <div className="text-[10px] text-zinc-500 mt-0.5">{t.description}</div>
+                <div className="text-[9px] text-zinc-600 mt-1">{t.component_count} components</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Recent circuits */}
       <h2 className="text-lg font-medium mb-3">Recent Circuits</h2>

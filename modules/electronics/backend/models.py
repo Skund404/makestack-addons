@@ -30,13 +30,14 @@ class CircuitUpdate(BaseModel):
 
 
 class ComponentCreate(BaseModel):
-    component_type: str  # "resistor", "voltage_source", "current_source", "ground"
+    component_type: str  # "resistor", "voltage_source", "current_source", "ground", "diode", "npn_bjt", etc.
     value: str = ""
     unit: str = ""
     x: float = 0
     y: float = 0
     rotation: int = 0
     catalogue_path: str | None = None
+    model_params: dict | None = None  # device model parameters (Is, N, Bf, Vth, etc.)
 
 
 class ComponentUpdate(BaseModel):
@@ -45,6 +46,7 @@ class ComponentUpdate(BaseModel):
     x: float | None = None
     y: float | None = None
     rotation: int | None = None
+    model_params: dict | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -75,7 +77,7 @@ class ConnectPinsRequest(BaseModel):
 
 
 class SimulateRequest(BaseModel):
-    sim_type: str = "op"  # "op", "ac", "dc_sweep", "transient"
+    sim_type: str = "op"  # "op", "ac", "dc_sweep", "transient", "monte_carlo", "param_sweep", "temp_sweep"
 
     # AC analysis parameters
     f_start: float = 1.0
@@ -91,6 +93,23 @@ class SimulateRequest(BaseModel):
     # Transient analysis parameters
     t_stop: float = 0.01
     t_step: float | None = None
+
+    # Monte Carlo parameters
+    mc_tolerances: dict | None = None  # {comp_id: {"value": 0.05}}
+    mc_runs: int = 100
+    mc_seed: int | None = None
+
+    # Parameter sweep parameters
+    ps_component_id: str | None = None
+    ps_param: str = "value"
+    ps_start: float = 0.0
+    ps_stop: float = 1.0
+    ps_steps: int = 20
+
+    # Temperature sweep parameters
+    temp_start: float = -40.0
+    temp_stop: float = 125.0
+    temp_steps: int = 20
 
 
 # ---------------------------------------------------------------------------
@@ -145,3 +164,32 @@ class RegionUpdate(BaseModel):
 class RegionMemberAdd(BaseModel):
     member_type: str  # "component" or "net"
     member_id: str
+
+
+# ---------------------------------------------------------------------------
+# Subcircuits (E4)
+# ---------------------------------------------------------------------------
+
+
+class SubcircuitCreate(BaseModel):
+    name: str
+    description: str = ""
+    port_pins: list[str]  # external interface pin names
+    circuit_json: dict = {}  # internal netlist
+
+
+class SubcircuitInstanceCreate(BaseModel):
+    subcircuit_id: str
+    port_mapping: dict[str, str] = {}  # port_pin_name -> net_id in parent
+    x: float = 0
+    y: float = 0
+    rotation: int = 0
+
+
+# ---------------------------------------------------------------------------
+# MCU (E7)
+# ---------------------------------------------------------------------------
+
+
+class MCUProgramUpload(BaseModel):
+    source_code: str
