@@ -115,6 +115,11 @@ Circuits live in the UserDB (not in the catalogue). Each circuit has:
 - `electronics__get_component_type` — get type details (pins, defaults, description)
 - `electronics__get_model_presets` — get model presets for a type (1N4148, 2N3904, etc.)
 
+### Catalogue (Core Integration)
+- `electronics__seed_catalogue` — push built-in presets (1N4148, 2N3904, etc.) to Core as Material primitives
+- `electronics__list_catalogue_models` — list electronics models from the catalogue (filter by component_type, search)
+- `electronics__create_catalogue_model` — create a new model from SPICE parameters (datasheet ingestion)
+
 ### Subcircuits
 - `electronics__create_subcircuit` — define a reusable subcircuit (name, port_pins, circuit_json)
 - `electronics__list_subcircuits` — list all subcircuit definitions
@@ -231,6 +236,44 @@ When the user describes a goal rather than a circuit:
 2. `electronics__export_bom` — generate bill of materials for ordering
 3. `electronics__export_bundle` — full JSON for sharing/archiving
 4. `electronics__export_waveform_csv` — export sweep/transient data for plotting
+
+### Datasheet Ingestion (AI Flow)
+
+When the user provides a component datasheet (PDF or description):
+
+1. Extract key SPICE parameters from the datasheet:
+   - **Diodes:** Is (saturation current), N (emission coefficient), Bv (breakdown voltage), Rs (series resistance)
+   - **BJTs:** Bf (forward beta), Br (reverse beta), Is (saturation current), Vaf (Early voltage), Nf/Nr
+   - **MOSFETs:** Kp (transconductance), Vth (threshold voltage), Lambda (channel-length modulation), W, L
+2. Identify the component type (diode, zener, led, npn_bjt, pnp_bjt, nmos, pmos)
+3. `electronics__create_catalogue_model` with the extracted parameters:
+   ```json
+   {
+     "component_type": "diode",
+     "name": "BAT54",
+     "spice_params": {"Is": 2e-7, "N": 1.04, "Bv": 30, "Rs": 0.8},
+     "description": "Schottky barrier diode",
+     "package": "SOT-23",
+     "manufacturer": "Nexperia",
+     "datasheet_url": "https://..."
+   }
+   ```
+4. The model is now a Material primitive in the Core catalogue
+5. Use it in circuits by providing `catalogue_path` when adding components:
+   ```json
+   {"component_type": "diode", "catalogue_path": "materials/electronics-diode-bat54"}
+   ```
+6. The solver automatically resolves SPICE params from the catalogue entry
+
+### Catalogue Resolution Priority
+
+When a component has both a `catalogue_path` and explicit `model_params`:
+1. Catalogue SPICE params are loaded as the base
+2. Explicit `model_params` override individual parameters
+3. Built-in presets are the final fallback if catalogue is unavailable
+
+This means users can place a catalogue component and tweak individual parameters
+without creating a new catalogue entry.
 
 ## Constraints
 

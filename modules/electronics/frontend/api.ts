@@ -232,6 +232,15 @@ export interface MCUProgram {
   created_at: string
 }
 
+export interface CatalogueModel {
+  catalogue_path: string
+  name: string
+  description: string
+  component_type: string
+  spice_params: Record<string, number>
+  tags: string[]
+}
+
 // ---------------------------------------------------------------------------
 // API calls
 // ---------------------------------------------------------------------------
@@ -459,4 +468,31 @@ export const electronicsApi = {
 
   deleteProgram: (circuitId: string, componentId: string) =>
     apiDelete<{ deleted: boolean }>(`${BASE}/circuits/${circuitId}/mcu/${componentId}/program`),
+
+  // --- Catalogue Integration ---
+  seedCatalogue: () =>
+    apiPost<{ seeded: number; skipped: number; errors: string[] }>(`${BASE}/catalogue/seed`, {}),
+
+  listCatalogueModels: (params?: { component_type?: string; search?: string }) => {
+    const qs = new URLSearchParams()
+    if (params?.component_type) qs.set('component_type', params.component_type)
+    if (params?.search) qs.set('search', params.search)
+    const query = qs.toString()
+    return apiGet<{ items: CatalogueModel[]; total: number }>(
+      `${BASE}/catalogue/models${query ? `?${query}` : ''}`
+    )
+  },
+
+  createCatalogueModel: (data: {
+    component_type: string
+    name: string
+    spice_params: Record<string, number>
+    description?: string
+    package?: string
+    manufacturer?: string
+    datasheet_url?: string
+  }) =>
+    apiPost<{ catalogue_path: string; name: string; component_type: string; spice_params: Record<string, number> }>(
+      `${BASE}/catalogue/models`, data
+    ),
 }

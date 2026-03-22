@@ -9,6 +9,7 @@ import { ElectronicsHome } from './views/ElectronicsHome'
 import { ElectronicsCircuits } from './views/ElectronicsCircuits'
 import { ElectronicsCircuitEditor } from './views/ElectronicsCircuitEditor'
 import { ElectronicsComponents } from './views/ElectronicsComponents'
+import { ElectronicsCatalogue } from './views/ElectronicsCatalogue'
 import { ElectronicsSidebar } from './components/ElectronicsSidebar'
 
 export function registerElectronicsModule(): void {
@@ -23,6 +24,7 @@ export function registerElectronicsModule(): void {
       { id: 'electronics-home',       label: 'Home',       icon: 'Zap',          route: '/electronics' },
       { id: 'electronics-circuits',   label: 'Circuits',   icon: 'CircuitBoard', route: '/electronics/circuits' },
       { id: 'electronics-components', label: 'Components', icon: 'Box',          route: '/electronics/components' },
+      { id: 'electronics-catalogue', label: 'Catalogue',  icon: 'Database',     route: '/electronics/catalogue' },
     ],
     theme: {
       sidebar_bg: '#0a1628',
@@ -41,6 +43,7 @@ export function registerElectronicsModule(): void {
   registerView('/electronics/circuits',     ElectronicsCircuits)
   registerView('/electronics/circuits/:id', ElectronicsCircuitEditor)
   registerView('/electronics/components',   ElectronicsComponents)
+  registerView('/electronics/catalogue',   ElectronicsCatalogue)
 }
 
 export const keywords = {}

@@ -2,12 +2,13 @@
  * Custom sidebar for the Electronics Lab standalone app mode.
  */
 import { useLocation, useNavigate } from '@tanstack/react-router'
-import { Zap, CircuitBoard, Box } from 'lucide-react'
+import { Zap, CircuitBoard, Box, Database } from 'lucide-react'
 
 const NAV_ITEMS = [
   { id: 'home',       label: 'Home',       icon: Zap,          route: '/electronics' },
   { id: 'circuits',   label: 'Circuits',   icon: CircuitBoard, route: '/electronics/circuits' },
   { id: 'components', label: 'Components', icon: Box,          route: '/electronics/components' },
+  { id: 'catalogue',  label: 'Catalogue',  icon: Database,     route: '/electronics/catalogue' },
 ]
 
 export function ElectronicsSidebar() {

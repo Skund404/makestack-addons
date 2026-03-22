@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from makestack_sdk.userdb import get_module_userdb_factory, ModuleUserDB
+from makestack_sdk.catalogue_client import CatalogueClient, get_catalogue_client
 
 
 # ---------------------------------------------------------------------------
@@ -236,11 +237,33 @@ async def add_component(
     circuit_id: str,
     body: ComponentCreate,
     db: ModuleUserDB = Depends(get_db),
+    catalogue: CatalogueClient = Depends(get_catalogue_client),
 ):
-    """Place a component on the canvas. Auto-assigns ref designator and creates pins."""
+    """Place a component on the canvas. Auto-assigns ref designator and creates pins.
+
+    If catalogue_path is provided, resolves the catalogue entry and merges
+    SPICE params as defaults (body.model_params override catalogue params).
+    """
     circuit = await db.fetch_one("SELECT id FROM electronics_circuits WHERE id = ?", [circuit_id])
     if not circuit:
         raise HTTPException(404, detail={"error": "Circuit not found"})
+
+    # Resolve catalogue entry if catalogue_path is provided
+    if body.catalogue_path:
+        try:
+            prim = await catalogue.get_primitive(body.catalogue_path)
+            if prim and hasattr(prim, "properties") and prim.properties:
+                cat_props = prim.properties
+                # Auto-set component_type from catalogue if not explicitly provided
+                if not body.component_type and cat_props.get("component_type"):
+                    body.component_type = cat_props["component_type"]
+                # Merge SPICE params: catalogue as base, body.model_params override
+                cat_spice = cat_props.get("spice_params", {})
+                if cat_spice:
+                    merged = {**cat_spice, **(body.model_params or {})}
+                    body.model_params = merged
+        except Exception:
+            pass  # Core unavailable — proceed with whatever was provided
 
     if not validate_component_type(body.component_type):
         raise HTTPException(400, detail={
@@ -503,6 +526,7 @@ async def run_simulation(
     circuit_id: str,
     body: SimulateRequest = None,
     db: ModuleUserDB = Depends(get_db),
+    catalogue: CatalogueClient = Depends(get_catalogue_client),
 ):
     """Run simulation on the circuit. Supports: op, ac, dc_sweep, transient."""
     if body is None:
@@ -512,7 +536,7 @@ async def run_simulation(
     if not circuit:
         raise HTTPException(404, detail={"error": "Circuit not found"})
 
-    graph = await _build_solver_graph(circuit_id, db)
+    graph = await _build_solver_graph(circuit_id, db, catalogue)
 
     sim_id = _uuid()
     start_time = time.monotonic()
@@ -596,8 +620,17 @@ async def get_result_detail(
 # ===================================================================
 
 
-async def _build_solver_graph(circuit_id: str, db: ModuleUserDB) -> CircuitGraph:
-    """Load circuit data and build a CircuitGraph for the solver."""
+async def _build_solver_graph(
+    circuit_id: str,
+    db: ModuleUserDB,
+    catalogue: CatalogueClient | None = None,
+) -> CircuitGraph:
+    """Load circuit data and build a CircuitGraph for the solver.
+
+    If a catalogue client is provided, resolves catalogue_path on components
+    to merge SPICE params from catalogue entries. Falls back gracefully if
+    Core is unavailable.
+    """
     components = await db.fetch_all(
         "SELECT * FROM electronics_components WHERE circuit_id = ?", [circuit_id]
     )
@@ -626,6 +659,22 @@ async def _build_solver_graph(circuit_id: str, db: ModuleUserDB) -> CircuitGraph
             pin_map[cid] = {}
         pin_map[cid][pin["pin_name"]] = pin["net_id"]
 
+    # Resolve catalogue entries for components with catalogue_path
+    catalogue_cache: dict[str, dict] = {}
+    if catalogue:
+        paths_to_resolve = set()
+        for comp in components:
+            cp = comp.get("catalogue_path")
+            if cp:
+                paths_to_resolve.add(cp)
+        for path in paths_to_resolve:
+            try:
+                prim = await catalogue.get_primitive(path)
+                if prim and hasattr(prim, "properties") and prim.properties:
+                    catalogue_cache[path] = prim.properties
+            except Exception:
+                pass  # Core unavailable — fall back to built-in presets
+
     solver_components = []
     for comp in components:
         value_str = comp["value"] or "0"
@@ -640,6 +689,15 @@ async def _build_solver_graph(circuit_id: str, db: ModuleUserDB) -> CircuitGraph
             params = _json.loads(props_str) if props_str else {}
         except (ValueError, TypeError):
             params = {}
+
+        # Merge catalogue SPICE params as base (user properties override)
+        cat_path = comp.get("catalogue_path")
+        if cat_path and cat_path in catalogue_cache:
+            cat_props = catalogue_cache[cat_path]
+            spice_params = cat_props.get("spice_params", {})
+            # Catalogue params are the base, component properties override
+            merged = {**spice_params, **params}
+            params = merged
 
         solver_components.append(ComponentInstance(
             id=comp["id"],
@@ -2211,3 +2269,146 @@ async def _get_sim_result_full(sim_id: str, db: ModuleUserDB) -> dict:
     result["component_results"] = [dict(r) for r in comp_results]
 
     return result
+
+
+# ===================================================================
+# CATALOGUE INTEGRATION
+# ===================================================================
+
+
+_cat_seed = _elec_import("catalogue_seed")
+
+
+@router.post("/catalogue/seed")
+async def seed_catalogue(
+    catalogue: CatalogueClient = Depends(get_catalogue_client),
+):
+    """Seed built-in component presets (1N4148, 2N3904, etc.) to the catalogue."""
+    result = await _cat_seed.seed_catalogue(catalogue)
+    return result
+
+
+@router.get("/catalogue/models")
+async def list_catalogue_models(
+    component_type: str | None = Query(None, description="Filter by component type"),
+    search: str | None = Query(None, description="Search term"),
+    catalogue: CatalogueClient = Depends(get_catalogue_client),
+):
+    """List electronics component models from the catalogue."""
+    try:
+        query = "electronics"
+        if component_type:
+            query += f" {component_type}"
+        if search:
+            query += f" {search}"
+
+        primitives = await catalogue.search(query)
+
+        items = []
+        for prim in primitives:
+            # Filter to electronics domain materials only
+            if not hasattr(prim, "domain") or prim.domain != "electronics":
+                continue
+            if not hasattr(prim, "properties") or not prim.properties:
+                continue
+            if prim.properties.get("component_type") is None:
+                continue
+            # Apply component_type filter if specified
+            if component_type and prim.properties.get("component_type") != component_type:
+                continue
+
+            items.append({
+                "catalogue_path": prim.path,
+                "name": prim.name,
+                "description": prim.description,
+                "component_type": prim.properties.get("component_type"),
+                "spice_params": prim.properties.get("spice_params", {}),
+                "tags": prim.tags if hasattr(prim, "tags") else [],
+            })
+
+        return {"items": items, "total": len(items)}
+
+    except Exception as exc:
+        raise HTTPException(503, detail={
+            "error": f"Catalogue unavailable: {exc}",
+            "suggestion": "Ensure Core is running, or use built-in presets",
+        })
+
+
+@router.post("/catalogue/models")
+async def create_catalogue_model(
+    body: dict,
+    catalogue: CatalogueClient = Depends(get_catalogue_client),
+):
+    """Create a new component model in the catalogue from SPICE parameters.
+
+    Used by AI after parsing a datasheet. Body:
+    {
+        "component_type": "diode",
+        "name": "BAT54",
+        "spice_params": {"Is": 2e-7, "N": 1.04, "Bv": 30},
+        "description": "Schottky barrier diode",
+        "package": "SOT-23",
+        "manufacturer": "Nexperia",
+        "datasheet_url": "https://..."
+    }
+    """
+    from backend.app.models import PrimitiveCreate
+
+    comp_type = body.get("component_type")
+    name = body.get("name")
+    spice_params = body.get("spice_params", {})
+
+    if not comp_type or not name:
+        raise HTTPException(400, detail={
+            "error": "component_type and name are required",
+            "suggestion": "Provide component_type (diode, npn_bjt, nmos, etc.) and name (part number)",
+        })
+
+    if comp_type not in COMPONENT_TYPES:
+        raise HTTPException(400, detail={
+            "error": f"Unknown component_type: {comp_type}",
+            "suggestion": f"Valid types: {', '.join(COMPONENT_TYPES.keys())}",
+        })
+
+    if not spice_params:
+        raise HTTPException(400, detail={
+            "error": "spice_params dict is required",
+            "suggestion": "Provide SPICE model parameters (Is, N, Bf, Vth, etc.)",
+        })
+
+    tags = ["electronics", comp_type.replace("_", "-")]
+    if body.get("manufacturer"):
+        tags.append(body["manufacturer"].lower())
+
+    properties = {
+        "component_type": comp_type,
+        "spice_params": spice_params,
+    }
+    if body.get("package"):
+        properties["package"] = body["package"]
+    if body.get("manufacturer"):
+        properties["manufacturer"] = body["manufacturer"]
+    if body.get("datasheet_url"):
+        properties["datasheet_url"] = body["datasheet_url"]
+
+    try:
+        prim = await catalogue.create_primitive(PrimitiveCreate(
+            type="material",
+            name=name,
+            description=body.get("description", f"Electronics component: {name}"),
+            tags=tags,
+            domain="electronics",
+            properties=properties,
+        ))
+        return {
+            "catalogue_path": prim.path,
+            "name": prim.name,
+            "component_type": comp_type,
+            "spice_params": spice_params,
+        }
+    except Exception as exc:
+        raise HTTPException(503, detail={
+            "error": f"Failed to create catalogue entry: {exc}",
+            "suggestion": "Ensure Core is running and accessible",
+        })

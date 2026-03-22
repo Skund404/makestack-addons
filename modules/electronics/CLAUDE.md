@@ -192,11 +192,43 @@ E5 Export (SPICE, BOM, CSV) + circuit templates →
 E6 Educational features (calculators, MNA explainer) →
 E7 MCU co-simulation (sandboxed Python tick functions) →
 E8 Frontend (all component symbols, simulation panel) →
-E9 Apple 1 templates + final polish
+E9 Apple 1 templates + final polish →
+E10 Catalogue integration (Core Material primitives, datasheet ingestion)
+
+## Catalogue Integration
+
+Components are stored as Material primitives in the Core catalogue. The `catalogue_path`
+convention is `materials/electronics-{type}-{slug}` (e.g., `materials/electronics-diode-1n4148`).
+
+### Data Flow
+```
+Core Catalogue (Material primitive with spice_params in properties)
+  → Component in circuit (catalogue_path reference)
+    → Solver resolves SPICE params from catalogue at simulation time
+```
+
+### Resolution Priority
+1. Explicit `model_params` on the component instance
+2. SPICE params from the catalogue entry (`properties.spice_params`)
+3. Built-in presets (device_models.py) as fallback
+
+### Graceful Degradation
+All catalogue resolution is wrapped in try/except. If Core is unavailable,
+the solver falls back to built-in presets — simulation never fails due to catalogue.
+
+### Catalogue Endpoints
+- `POST /catalogue/seed` — push built-in presets to catalogue as Material primitives
+- `GET /catalogue/models` — list electronics models from catalogue (filter by type, search)
+- `POST /catalogue/models` — create model from SPICE params (AI datasheet ingestion)
+
+### Datasheet Ingestion (AI Flow)
+The AI can parse component datasheets and create new catalogue entries via
+`electronics__create_catalogue_model`. The body includes `component_type`, `name`,
+`spice_params`, and optional `package`, `manufacturer`, `datasheet_url` metadata.
 
 ## Current State
 
-E9 complete: 360 tests passing, frontend fully updated.
+E10 complete (catalogue integration): ~380 tests, frontend fully updated.
 - E1: DC solver, circuit CRUD, component placement, wiring, simulation (16 endpoints)
 - E1b: Wire segments/junctions, DRC, regions, value parsing, Manhattan routing (12 endpoints)
 - E2: Capacitor + inductor, AC/DC sweep/transient analysis, sweep data storage
@@ -206,11 +238,12 @@ E9 complete: 360 tests passing, frontend fully updated.
 - E6: Calculators (voltage divider, LED resistor, RC filter, BJT bias), MNA step-by-step explainer
 - E7: MCU component with sandboxed Python tick functions, program CRUD API
 - E8: Frontend: all 15 component SVG symbols, grouped palette, sim type selector, operating region display, NR convergence info, export buttons, template gallery, model preset badges
+- E10: Catalogue integration: seed presets to Core, list/create models, resolve SPICE params from catalogue, catalogue browser view, datasheet ingestion AI flow
 - 15 component types: resistor, capacitor, inductor, voltage_source, current_source, ground, diode, zener, led, npn_bjt, pnp_bjt, nmos, pmos, opamp, mcu
 - 12 templates: voltage_divider, led_driver, common_emitter_amp, cmos_inverter, zener_regulator, opamp_inverting, apple1_clock, apple1_power_supply, apple1_reset, half_wave_rectifier, emitter_follower, current_mirror
-- 6 migrations, ~60 API endpoints
-- Backend files: solver.py, device_models.py, components.py, models.py, routes.py, subcircuit.py, exporters.py, templates.py, education.py, mcu_sandbox.py
-- Frontend files: ComponentSymbol.tsx (15 symbols), ComponentPalette.tsx (grouped), SimulationPanel.tsx (sim type + NR + regions), SchematicCanvas.tsx, api.ts (~60 typed endpoints), ElectronicsHome.tsx (templates), ElectronicsComponents.tsx (grouped + presets)
+- 6 migrations, ~63 API endpoints
+- Backend files: solver.py, device_models.py, components.py, models.py, routes.py, subcircuit.py, exporters.py, templates.py, education.py, mcu_sandbox.py, catalogue_seed.py
+- Frontend files: ComponentSymbol.tsx, ComponentPalette.tsx, SimulationPanel.tsx, SchematicCanvas.tsx, api.ts, ElectronicsHome.tsx, ElectronicsComponents.tsx, ElectronicsCatalogue.tsx
 
 ## Test Command
 

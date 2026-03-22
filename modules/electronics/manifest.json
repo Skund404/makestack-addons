@@ -91,14 +91,19 @@
 
     { "method": "POST",   "path": "/circuits/{circuit_id}/mcu/{component_id}/program", "name": "upload_mcu_program", "description": "Upload Python tick function for MCU component" },
     { "method": "GET",    "path": "/circuits/{circuit_id}/mcu/{component_id}/program", "name": "get_mcu_program",    "description": "Get current MCU program" },
-    { "method": "DELETE", "path": "/circuits/{circuit_id}/mcu/{component_id}/program", "name": "delete_mcu_program", "description": "Delete MCU program" }
+    { "method": "DELETE", "path": "/circuits/{circuit_id}/mcu/{component_id}/program", "name": "delete_mcu_program", "description": "Delete MCU program" },
+
+    { "method": "POST",   "path": "/catalogue/seed",    "name": "seed_catalogue",          "description": "Seed built-in component presets to the catalogue" },
+    { "method": "GET",    "path": "/catalogue/models",  "name": "list_catalogue_models",   "description": "List electronics component models from the catalogue" },
+    { "method": "POST",   "path": "/catalogue/models",  "name": "create_catalogue_model",  "description": "Create a new component model from SPICE parameters (datasheet ingestion)" }
   ],
 
   "views": [
     { "id": "electronics-home",       "label": "Home",       "route": "/electronics",            "icon": "Zap",          "sort_order": 0 },
     { "id": "electronics-circuits",   "label": "Circuits",   "route": "/electronics/circuits",   "icon": "CircuitBoard", "sort_order": 1 },
     { "id": "electronics-editor",     "label": "Editor",     "route": "/electronics/circuits/:id","icon": "PenTool",     "sort_order": 2 },
-    { "id": "electronics-components", "label": "Components", "route": "/electronics/components",  "icon": "Box",         "sort_order": 3 }
+    { "id": "electronics-components", "label": "Components", "route": "/electronics/components",  "icon": "Box",         "sort_order": 3 },
+    { "id": "electronics-catalogue", "label": "Catalogue",  "route": "/electronics/catalogue",  "icon": "Database",    "sort_order": 4 }
   ],
 
   "panels": [
@@ -114,7 +119,8 @@
     "nav_items": [
       { "id": "electronics-home",       "label": "Home",       "icon": "Zap",          "route": "/electronics" },
       { "id": "electronics-circuits",   "label": "Circuits",   "icon": "CircuitBoard", "route": "/electronics/circuits" },
-      { "id": "electronics-components", "label": "Components", "icon": "Box",          "route": "/electronics/components" }
+      { "id": "electronics-components", "label": "Components", "icon": "Box",          "route": "/electronics/components" },
+      { "id": "electronics-catalogue", "label": "Catalogue",  "icon": "Database",     "route": "/electronics/catalogue" }
     ],
     "theme": {
       "sidebar_bg": "#0a1628",
