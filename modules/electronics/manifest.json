@@ -130,7 +130,7 @@
     }
   },
 
-  "keywords": ["electronics", "circuit", "simulator", "spice", "schematic", "mna", "apple1"],
+  "keywords": [],
   "dependencies": { "python": ["numpy>=1.24.0"], "node": [] },
   "core_api_permissions": [],
   "config_defaults": {}
