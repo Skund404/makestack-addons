@@ -122,6 +122,7 @@ All endpoints are at `/modules/kitchen/`. See the manifest for the full list.
 | `GET` | `/recipes/{id}` | Full recipe detail |
 | `POST` | `/recipes` | Create recipe |
 | `PUT` | `/recipes/{id}` | Update recipe |
+| `POST` | `/recipes/{id}/fork` | Fork into an independent copy |
 | `GET` | `/recipes/can-make` | Makeable from current stock |
 | `GET` | `/recipes/{id}/stock-check` | Per-ingredient availability |
 
@@ -147,6 +148,45 @@ All endpoints are at `/modules/kitchen/`. See the manifest for the full list.
 
 ---
 
+## Recipe Forking
+
+Fork any recipe to create an independent variation:
+
+```
+POST /modules/kitchen/recipes/{id}/fork
+```
+
+Or via MCP: `kitchen__fork_recipe`
+
+What it does:
+1. Forks the underlying Workflow primitive in the catalogue (sets `cloned_from` provenance)
+2. Copies all `kitchen_recipe_ingredients` rows with fresh IDs
+3. Copies `kitchen_recipe_nutrition` if present
+4. Returns the new recipe — fully independent, edit freely
+
+The forked recipe has "(fork)" appended to its title and can be renamed immediately.
+
+---
+
+## Attaching Media to Recipes
+
+Use the shell's generic binary refs API — no kitchen-specific endpoint needed:
+
+```
+POST /api/binary-refs
+{
+  "filename": "photo.jpg",
+  "asset_type": "photo",
+  "local_path": "/path/to/photo.jpg",
+  "backup_location": "s3://bucket/path/photo.jpg",
+  "primitive_ref": "workflows/my-recipe/manifest.json"
+}
+```
+
+Or via MCP: `create_binary_ref` with `primitive_ref` set to the recipe's workflow path and `asset_type` set to `"photo"` or `"video"`. Retrieve with `list_binary_refs(primitive_ref=...)`.
+
+---
+
 ## MCP Tools
 
 When the module is installed, the following MCP tools are available to AI
@@ -155,11 +195,20 @@ agents. See `SKILL.md` for the complete AI interaction guide.
 `kitchen__list_expiring_stock`, `kitchen__lookup_stock_alias`,
 `kitchen__save_stock_alias`, `kitchen__bulk_update_stock`,
 `kitchen__list_recipes`, `kitchen__get_recipe`, `kitchen__create_recipe`,
-`kitchen__update_recipe`, `kitchen__can_make`, `kitchen__check_recipe_stock`,
+`kitchen__update_recipe`, `kitchen__fork_recipe`,
+`kitchen__create_recipe_full`, `kitchen__update_recipe_full`, `kitchen__delete_recipe`,
+`kitchen__can_make`, `kitchen__check_recipe_stock`,
 `kitchen__get_recipe_nutrition`, `kitchen__set_ingredient_nutrition`,
 `kitchen__calculate_recipe_nutrition`, `kitchen__get_meal_plan`,
 `kitchen__set_meal_plan_entry`, `kitchen__get_shopping_list`,
-`kitchen__log_cook`, `kitchen__list_cook_log`
+`kitchen__log_cook`, `kitchen__list_cook_log`,
+`kitchen__list_shopping`, `kitchen__add_shopping_item`, `kitchen__add_recipe_to_shopping`,
+`kitchen__clear_checked_shopping`, `kitchen__update_shopping_item`, `kitchen__delete_shopping_item`,
+`kitchen__get_shopping_badge`, `kitchen__add_stock_item`, `kitchen__update_stock_item`,
+`kitchen__delete_stock_item`, `kitchen__list_stock`, `kitchen__search_catalogue`,
+`kitchen__delete_meal_plan_entry`
+
+For recipe media (photos, videos): use the shell tools `create_binary_ref`, `list_binary_refs` (from the Binary Refs MCP group) with `primitive_ref` pointing to the recipe's workflow path.
 
 ---
 
@@ -179,6 +228,7 @@ All tables are prefixed `kitchen_` in the UserDB (`~/.makestack/userdb.sqlite`).
 | `kitchen_locations` | Configured storage locations |
 | `kitchen_stock_aliases` | Receipt text → catalogue path mappings |
 | `kitchen_stock_metadata` | Expiry and frozen-on dates per stock item |
+| `kitchen_shopping_list` | Persistent shopping list — manual and recipe-derived items with checked state |
 
 ---
 

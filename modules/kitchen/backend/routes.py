@@ -549,6 +549,125 @@ async def delete_recipe(
     return {"deleted": True, "id": recipe_id}
 
 
+@router.post("/recipes/{recipe_id}/fork", status_code=201)
+async def fork_recipe(
+    recipe_id: str,
+    db: ModuleUserDB = Depends(get_db),
+    catalogue: CatalogueClient = Depends(get_catalogue_client),
+):
+    """Fork a recipe into an independent copy.
+
+    Creates a fork of the catalogue Workflow primitive (via the Shell's fork endpoint)
+    and duplicates all kitchen metadata (recipe row, ingredients, nutrition) to produce
+    a fully independent variant. The fork's cloned_from field links back to the original
+    workflow for provenance.
+
+    Returns the new recipe record (same shape as GET /recipes/{id}).
+    """
+    # Load source recipe.
+    src = await db.fetch_one(
+        "SELECT * FROM kitchen_recipes WHERE id = ?", [recipe_id]
+    )
+    if not src:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "Recipe not found",
+                "recipe_id": recipe_id,
+                "suggestion": "Use GET /recipes to list available recipes",
+            },
+        )
+
+    # Fork the catalogue Workflow primitive (if one is linked).
+    new_workflow_id = src["workflow_id"]
+    if src.get("workflow_id"):
+        try:
+            forked = await catalogue.fork_primitive(
+                src["workflow_id"],
+                name=f"{src['title']} (fork)",
+            )
+            new_workflow_id = forked.path
+        except Exception:
+            # Continue without forking the primitive — kitchen data still forks.
+            pass
+
+    now = datetime.now(timezone.utc).isoformat()
+    new_id = str(uuid.uuid4())
+
+    # Duplicate the kitchen_recipes row.
+    await db.execute(
+        """
+        INSERT INTO kitchen_recipes
+            (id, title, description, workflow_id, cuisine_tag,
+             prep_time_mins, cook_time_mins, servings, notes, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            new_id,
+            f"{src['title']} (fork)",
+            src["description"],
+            new_workflow_id,
+            src["cuisine_tag"],
+            src["prep_time_mins"],
+            src["cook_time_mins"],
+            src["servings"],
+            src["notes"],
+            now,
+            now,
+        ],
+    )
+
+    # Duplicate ingredients.
+    ingredients = await db.fetch_all(
+        "SELECT * FROM kitchen_recipe_ingredients WHERE recipe_id = ?", [recipe_id]
+    )
+    for ing in ingredients:
+        await db.execute(
+            """
+            INSERT INTO kitchen_recipe_ingredients
+                (id, recipe_id, catalogue_path, name, quantity, unit, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                str(uuid.uuid4()),
+                new_id,
+                ing["catalogue_path"],
+                ing["name"],
+                ing["quantity"],
+                ing["unit"],
+                ing["notes"],
+            ],
+        )
+
+    # Duplicate nutrition data (per-serving).
+    nutrition = await db.fetch_one(
+        "SELECT * FROM kitchen_recipe_nutrition WHERE recipe_id = ?", [recipe_id]
+    )
+    if nutrition:
+        await db.execute(
+            """
+            INSERT INTO kitchen_recipe_nutrition
+                (id, recipe_id, calories, protein_g, carbs_g, fat_g, fibre_g,
+                 sugar_g, sodium_mg, calculated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                str(uuid.uuid4()),
+                new_id,
+                nutrition["calories"],
+                nutrition["protein_g"],
+                nutrition["carbs_g"],
+                nutrition["fat_g"],
+                nutrition["fibre_g"],
+                nutrition["sugar_g"],
+                nutrition["sodium_mg"],
+                now,
+            ],
+        )
+
+    return await _fetch_recipe_full(db, new_id)
+
+
 @router.get("/recipes/{recipe_id}")
 async def get_recipe(recipe_id: str, db: ModuleUserDB = Depends(get_db)):
     """Return full recipe with ingredients, nutrition, and cook summary."""

@@ -137,6 +137,7 @@ All mounted at /modules/kitchen/. Auto-generate MCP tools with naming: kitchen__
 | POST | /recipes/full | create_recipe_full | Create recipe with full primitive composition |
 | PUT | /recipes/{id}/full | update_recipe_full | Update recipe with full primitive composition |
 | DELETE | /recipes/{id} | delete_recipe | Delete recipe (preserves Workflow primitive) |
+| POST | /recipes/{id}/fork | fork_recipe | Fork recipe into independent copy — forks Workflow primitive + duplicates kitchen metadata |
 | GET | /recipes/can-make | list_can_make | Recipes makeable from current stock |
 | GET | /recipes/{id}/stock-check | recipe_stock_check | Per-ingredient stock status |
 
@@ -241,8 +242,9 @@ directly. This is intentional for the recipe builder UX.
 
 ## Current State
 
-K9 in progress: orchestrated recipe CRUD (7 new endpoints), recipe builder UI,
+K9 complete: orchestrated recipe CRUD (7 new endpoints), recipe builder UI,
 stock edit/delete, cook log record form, meal plan clear entry.
-Backend: 138 passing tests. 35 MCP tools. TypeScript: 0 errors.
+Backend: 138 passing tests. 36 MCP tools. TypeScript: 0 errors.
 Frontend: RecipeBuilder, IngredientSearch, StockItemDialog, RecordCookPanel.
 New views: /kitchen/recipes/new, /kitchen/recipes/:id/edit.
+Post-K9: recipe forking (`POST /recipes/{id}/fork` → `kitchen__fork_recipe`), binary media attachments via shell's generic `/api/binary-refs/` (no new kitchen endpoints needed).

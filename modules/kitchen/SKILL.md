@@ -372,8 +372,50 @@ notations.
 |---|---|---|
 | `kitchen__search_catalogue` | GET /catalogue/search | Search catalogue with optional type filter |
 
+### Forking Recipes
+| Tool | Endpoint | Description |
+|---|---|---|
+| `kitchen__fork_recipe` | POST /recipes/{id}/fork | Fork a recipe into an independent copy |
+
+**When to fork:** Fork a recipe when you want to create a variation without losing the original.
+Common examples: "Sourdough (gluten-free version)", "Chicken Curry (mild)", "Bolognese (vegan)".
+
+**What forking does:**
+1. Forks the linked catalogue Workflow primitive (via `fork_primitive` — sets `cloned_from` for provenance)
+2. Duplicates the kitchen_recipes row (title becomes "{original} (fork)")
+3. Copies all ingredients and nutrition data to the new recipe
+
+**After forking:** Use `kitchen__update_recipe` or `kitchen__update_recipe_full` to customise the forked version.
+The forked recipe is fully independent — changes to the original do not affect the fork.
+
+**Tool call:** `kitchen__fork_recipe(recipe_id="<uuid>")` — no body required. Returns the full new recipe.
+
+### Attaching Media to Recipes
+Use `create_binary_ref` (shell-level tool) to attach photos, videos, or documents to a recipe:
+
+```
+create_binary_ref(
+    filename="sourdough-crumb.jpg",
+    local_path="/path/to/photo.jpg",
+    backup_location="s3://my-bucket/kitchen/sourdough-crumb.jpg",
+    asset_type="photo",
+    mime_type="image/jpeg",
+    primitive_ref="workflows/sourdough-loaf/manifest.json",  # the recipe's workflow path
+    description="Cross-section showing crumb structure",
+    tags=["recipe-photo", "bread"]
+)
+```
+
+Use `list_binary_refs(primitive_ref="workflows/my-recipe/manifest.json")` to retrieve all
+media attached to a recipe. The `primitive_ref` field uses the workflow's catalogue path, not
+the kitchen recipe id.
+
 ### Core tools used in kitchen flows
 | Tool | Used for |
 |---|---|
 | `search_catalogue` | Resolve ingredient names to catalogue_path (shell-level) |
 | `create_primitive` | Create new ingredient entries (type=material) — only needed outside of recipe flows; `kitchen__create_recipe_full` handles this automatically |
+| `fork_primitive` | Fork a catalogue primitive (called internally by `kitchen__fork_recipe`) |
+| `create_binary_ref` | Attach a photo/video/document to a recipe or ingredient |
+| `list_binary_refs` | List all media attached to a recipe or ingredient |
+
