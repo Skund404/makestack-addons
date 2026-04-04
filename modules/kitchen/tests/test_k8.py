@@ -47,6 +47,7 @@ migration_002 = _load_kitchen("mig002k8", "backend/migrations/002_seed_locations
 migration_003 = _load_kitchen("mig003k8", "backend/migrations/003_add_prep_time.py")
 migration_004 = _load_kitchen("mig004k8", "backend/migrations/004_add_cook_log_fields.py")
 migration_005 = _load_kitchen("mig005k8", "backend/migrations/005_shopping_list.py")
+migration_006 = _load_kitchen("mig006k8", "backend/migrations/006_recipe_provenance.py")
 routes_mod    = _load_kitchen("routesk8",  "backend/routes.py")
 
 router = routes_mod.router
@@ -62,6 +63,7 @@ async def _apply_migrations(userdb: MockUserDB) -> None:
     await migration_003.up(userdb)
     await migration_004.up(userdb)
     await migration_005.up(userdb)
+    await migration_006.up(userdb)
     # Create shell tables that kitchen reads
     await userdb.execute("""
         CREATE TABLE IF NOT EXISTS inventory (

@@ -6,7 +6,7 @@
  */
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Loader2, Plus, X } from 'lucide-react'
+import { Loader2, Plus, X, GitFork } from 'lucide-react'
 import { kitchenApi, nameFromPath, fmtQty } from '../api'
 import type { KitchenStockList, KitchenStockItem } from '../api'
 import { StockItemDialog } from '../components/StockItemDialog'
@@ -46,6 +46,8 @@ export function KitchenLarder() {
   const [formLocation, setFormLocation] = useState('pantry')
   const [formExpiry, setFormExpiry] = useState('')
   const [formSaving, setFormSaving] = useState(false)
+  const [forkingPrimitive, setForkingPrimitive] = useState<string | null>(null)
+  const [forkFlash, setForkFlash] = useState<string | null>(null) // catalogue_path that just got forked
 
   const { data, isLoading } = useQuery({
     queryKey: ['kitchen-stock-all'],
@@ -65,6 +67,22 @@ export function KitchenLarder() {
     setFormUnit('')
     setFormLocation('pantry')
     setFormExpiry('')
+  }
+
+  const handleForkPrimitive = async (e: React.MouseEvent, cataloguePath: string) => {
+    e.stopPropagation()
+    if (!cataloguePath) return
+    const name = nameFromPath(cataloguePath)
+    setForkingPrimitive(cataloguePath)
+    try {
+      await kitchenApi.forkCataloguePrimitive(cataloguePath, `${name} (fork)`)
+      setForkFlash(cataloguePath)
+      setTimeout(() => setForkFlash(null), 3000)
+    } catch {
+      // silently fail
+    } finally {
+      setForkingPrimitive(null)
+    }
   }
 
   const handleAddItem = async () => {
@@ -158,13 +176,27 @@ export function KitchenLarder() {
                         <div
                           key={item.id}
                           onClick={() => { setEditingItem(item); setAddPanelOpen(false) }}
-                          className="flex items-center gap-2 px-3 py-2 border-b border-border/50 cursor-pointer hover:bg-accent/5 transition-colors"
+                          className="group flex items-center gap-2 px-3 py-2 border-b border-border/50 cursor-pointer hover:bg-accent/5 transition-colors"
                         >
                           <span className="flex-1 text-xs text-text truncate">{nameFromPath(item.catalogue_path)}</span>
                           <span className="text-[11px] text-text-faint shrink-0">
                             {fmtQty(item.quantity, item.unit)}
                           </span>
                           {expiryBadge(item.expiry_date)}
+                          {forkFlash === item.catalogue_path ? (
+                            <span className="text-[9px] text-accent shrink-0">forked</span>
+                          ) : (
+                            <button
+                              onClick={(e) => handleForkPrimitive(e, item.catalogue_path)}
+                              disabled={forkingPrimitive === item.catalogue_path}
+                              className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-text-faint hover:text-accent hover:bg-accent/10 transition-all disabled:opacity-30 shrink-0"
+                              title={`Fork ${nameFromPath(item.catalogue_path)}`}
+                            >
+                              {forkingPrimitive === item.catalogue_path
+                                ? <Loader2 size={10} className="animate-spin" />
+                                : <GitFork size={10} />}
+                            </button>
+                          )}
                         </div>
                       ))
                     )}

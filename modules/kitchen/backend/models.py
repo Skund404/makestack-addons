@@ -360,3 +360,21 @@ class StockItemUpdate(BaseModel):
     unit: str | None = None
     location: str | None = None
     expiry_date: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Forking
+# ---------------------------------------------------------------------------
+
+
+class RecipeForkRequest(BaseModel):
+    """Optional body for POST /recipes/{id}/fork."""
+
+    name: str | None = None
+
+
+class CatalogueForkRequest(BaseModel):
+    """Body for POST /catalogue/primitives/{path}/fork."""
+
+    name: str | None = None
+    description: str | None = None

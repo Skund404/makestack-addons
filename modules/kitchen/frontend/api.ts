@@ -67,11 +67,20 @@ export interface RecipeIngredient {
   notes: string
 }
 
+export interface LinkedPrimitive {
+  path: string
+  name: string
+}
+
 export interface RecipeDetail extends RecipeListItem {
   description: string
   workflow_id: string | null
+  forked_from_recipe_id: string | null
+  forked_from_recipe_title: string | null
   notes: string
   ingredients: RecipeIngredient[]
+  techniques: LinkedPrimitive[]
+  tools: LinkedPrimitive[]
   nutrition: NutritionData | null
   cook_summary: { count: number; last_cooked_at: string | null; avg_rating: number | null } | null
 }
@@ -301,6 +310,16 @@ export const kitchenApi = {
   // Stock — add
   addStockItem: (item: { catalogue_path?: string; name?: string; quantity: number; unit: string; location: string; expiry_date?: string; notes?: string }) =>
     apiPost<{ stock_item_id: string; catalogue_path: string; quantity: number; location: string }>(`${BASE}/stock/add`, item),
+
+  // Forking
+  forkRecipe: (id: string, name?: string) =>
+    apiPost<RecipeDetail>(`${BASE}/recipes/${id}/fork`, name ? { name } : {}),
+
+  forkCataloguePrimitive: (path: string, name?: string, description?: string) =>
+    apiPost<{ id: string; type: string; name: string; slug: string; path: string; cloned_from: string; description: string; tags: string[] }>(
+      `${BASE}/catalogue/primitives/${path}/fork`,
+      { ...(name ? { name } : {}), ...(description ? { description } : {}) }
+    ),
 
   // K9b: Orchestrated recipe CRUD
   createRecipeFull: (data: RecipeFullCreate) =>

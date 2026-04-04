@@ -6,7 +6,7 @@
  */
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Loader2, Clock, Users, Plus, Pencil, Trash2, ShoppingCart } from 'lucide-react'
+import { Loader2, Clock, Users, Plus, Pencil, Trash2, ShoppingCart, GitFork, Check, X } from 'lucide-react'
 import { kitchenApi, fmtQty } from '../api'
 import type { CanMakeResult } from '../api'
 
@@ -124,17 +124,21 @@ export function KitchenRecipes() {
             Select a recipe
           </div>
         ) : (
-          <RecipeDetailPane recipeId={selected} onDeleted={() => setSelectedId(null)} />
+          <RecipeDetailPane recipeId={selected} onDeleted={() => setSelectedId(null)} onForked={(id) => setSelectedId(id)} />
         )}
       </div>
     </div>
   )
 }
 
-function RecipeDetailPane({ recipeId, onDeleted }: { recipeId: string; onDeleted: () => void }) {
+function RecipeDetailPane({ recipeId, onDeleted, onForked }: { recipeId: string; onDeleted: () => void; onForked: (id: string) => void }) {
   const queryClient = useQueryClient()
   const [deleting, setDeleting] = useState(false)
   const [addingShopping, setAddingShopping] = useState(false)
+  const [forkingRecipe, setForkingRecipe] = useState(false)
+  const [forkName, setForkName] = useState('')
+  const [forkingPrimitive, setForkingPrimitive] = useState<string | null>(null) // path of primitive being forked
+  const [forkFlash, setForkFlash] = useState<{ path: string; name: string } | null>(null)
 
   const { data: recipe, isLoading } = useQuery({
     queryKey: ['kitchen-recipe', recipeId],
@@ -175,6 +179,32 @@ function RecipeDetailPane({ recipeId, onDeleted }: { recipeId: string; onDeleted
     }
   }
 
+  const handleForkRecipe = async () => {
+    try {
+      const result = await kitchenApi.forkRecipe(recipeId, forkName || undefined)
+      await queryClient.invalidateQueries({ queryKey: ['kitchen-recipes'] })
+      await queryClient.invalidateQueries({ queryKey: ['kitchen-recipes-all'] })
+      await queryClient.invalidateQueries({ queryKey: ['kitchen-recipes-canmake'] })
+      setForkingRecipe(false)
+      onForked(result.id)
+    } catch {
+      // silently fail
+    }
+  }
+
+  const handleForkPrimitive = async (path: string, defaultName: string) => {
+    setForkingPrimitive(path)
+    try {
+      const result = await kitchenApi.forkCataloguePrimitive(path, defaultName)
+      setForkFlash({ path, name: result.name })
+      setTimeout(() => setForkFlash(null), 3000)
+    } catch {
+      // silently fail
+    } finally {
+      setForkingPrimitive(null)
+    }
+  }
+
   if (isLoading || !recipe) {
     return (
       <div className="flex items-center justify-center py-12 text-text-muted gap-2">
@@ -195,6 +225,17 @@ function RecipeDetailPane({ recipeId, onDeleted }: { recipeId: string; onDeleted
           {recipe.title}
         </h1>
         <div className="flex items-center gap-1 shrink-0 mt-1">
+          <button
+            onClick={() => {
+              setForkName(`${recipe.title} (fork)`)
+              setForkingRecipe(true)
+            }}
+            className="p-1.5 rounded text-text-faint hover:text-accent hover:bg-accent/10 transition-colors"
+            title="Fork recipe"
+            data-testid="recipe-fork-btn"
+          >
+            <GitFork size={13} />
+          </button>
           <button
             onClick={() => { window.location.href = `/kitchen/recipes/${recipeId}/edit` }}
             className="p-1.5 rounded text-text-faint hover:text-accent hover:bg-accent/10 transition-colors"
@@ -222,6 +263,34 @@ function RecipeDetailPane({ recipeId, onDeleted }: { recipeId: string; onDeleted
           </button>
         </div>
       </div>
+
+      {/* Fork name input row */}
+      {forkingRecipe && (
+        <div className="flex items-center gap-2 mb-3 p-2 rounded-md bg-accent/5 border border-accent/20">
+          <GitFork size={11} className="text-accent shrink-0" />
+          <input
+            autoFocus
+            value={forkName}
+            onChange={(e) => setForkName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleForkRecipe(); if (e.key === 'Escape') setForkingRecipe(false) }}
+            className="flex-1 bg-transparent text-xs text-text outline-none placeholder:text-text-faint"
+            placeholder="Fork name…"
+          />
+          <button onClick={handleForkRecipe} className="p-1 rounded text-accent hover:bg-accent/20" title="Confirm fork">
+            <Check size={11} />
+          </button>
+          <button onClick={() => setForkingRecipe(false)} className="p-1 rounded text-text-faint hover:bg-surface" title="Cancel">
+            <X size={11} />
+          </button>
+        </div>
+      )}
+
+      {/* Provenance badge */}
+      {recipe.forked_from_recipe_title && (
+        <p className="text-[10px] text-text-faint mb-2">
+          ⤴ Forked from <span className="text-accent">{recipe.forked_from_recipe_title}</span>
+        </p>
+      )}
 
       {/* Meta badges */}
       <div className="flex items-center gap-2 mb-4 flex-wrap">
@@ -259,14 +328,88 @@ function RecipeDetailPane({ recipeId, onDeleted }: { recipeId: string; onDeleted
             {recipe.ingredients.map((ing) => {
               const stockIng = stockCheck?.ingredients.find((i) => i.catalogue_path === ing.catalogue_path)
               const isMissing = stockIng && stockIng.status !== 'ok'
+              const isForking = forkingPrimitive === ing.catalogue_path
+              const justForked = forkFlash?.path === ing.catalogue_path
               return (
-                <div key={ing.id} className="flex items-center gap-2 text-sm">
+                <div key={ing.id} className="group flex items-center gap-2 text-sm">
                   <span className="flex-1 text-text">{ing.name}</span>
                   <span className="text-text-muted font-mono text-xs">{fmtQty(ing.quantity, ing.unit)}</span>
                   {isMissing && (
                     <span className="text-[9px] font-medium px-1.5 py-px rounded-full" style={{ color: '#ef4444', backgroundColor: '#ef444415' }}>
                       {stockIng.status === 'low' ? 'Low' : 'Missing'}
                     </span>
+                  )}
+                  {justForked ? (
+                    <span className="text-[9px] text-accent">forked</span>
+                  ) : ing.catalogue_path ? (
+                    <button
+                      onClick={() => handleForkPrimitive(ing.catalogue_path!, `${ing.name} (fork)`)}
+                      disabled={isForking}
+                      className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-text-faint hover:text-accent hover:bg-accent/10 transition-all disabled:opacity-30"
+                      title={`Fork ${ing.name}`}
+                    >
+                      {isForking ? <Loader2 size={10} className="animate-spin" /> : <GitFork size={10} />}
+                    </button>
+                  ) : null}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Techniques */}
+      {recipe.techniques && recipe.techniques.length > 0 && (
+        <div className="mb-4">
+          <h3 className="text-[10px] font-medium uppercase tracking-wider text-text-faint mb-2">Techniques</h3>
+          <div className="space-y-1.5">
+            {recipe.techniques.map((tech) => {
+              const isForking = forkingPrimitive === tech.path
+              const justForked = forkFlash?.path === tech.path
+              return (
+                <div key={tech.path} className="group flex items-center gap-2 text-sm">
+                  <span className="flex-1 text-text">{tech.name}</span>
+                  {justForked ? (
+                    <span className="text-[9px] text-accent">forked</span>
+                  ) : (
+                    <button
+                      onClick={() => handleForkPrimitive(tech.path, `${tech.name} (fork)`)}
+                      disabled={isForking}
+                      className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-text-faint hover:text-accent hover:bg-accent/10 transition-all disabled:opacity-30"
+                      title={`Fork ${tech.name}`}
+                    >
+                      {isForking ? <Loader2 size={10} className="animate-spin" /> : <GitFork size={10} />}
+                    </button>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Tools */}
+      {recipe.tools && recipe.tools.length > 0 && (
+        <div className="mb-4">
+          <h3 className="text-[10px] font-medium uppercase tracking-wider text-text-faint mb-2">Equipment</h3>
+          <div className="space-y-1.5">
+            {recipe.tools.map((tool) => {
+              const isForking = forkingPrimitive === tool.path
+              const justForked = forkFlash?.path === tool.path
+              return (
+                <div key={tool.path} className="group flex items-center gap-2 text-sm">
+                  <span className="flex-1 text-text">{tool.name}</span>
+                  {justForked ? (
+                    <span className="text-[9px] text-accent">forked</span>
+                  ) : (
+                    <button
+                      onClick={() => handleForkPrimitive(tool.path, `${tool.name} (fork)`)}
+                      disabled={isForking}
+                      className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-text-faint hover:text-accent hover:bg-accent/10 transition-all disabled:opacity-30"
+                      title={`Fork ${tool.name}`}
+                    >
+                      {isForking ? <Loader2 size={10} className="animate-spin" /> : <GitFork size={10} />}
+                    </button>
                   )}
                 </div>
               )

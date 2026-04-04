@@ -308,6 +308,75 @@ notations.
 
 ---
 
+## 12. Forking
+
+Use forking to create an independent copy of any primitive. The fork gets a new id, slug,
+and timestamps. All other fields (tags, properties, relationships, steps) are copied from
+the source. The `cloned_from` field records the source path for provenance tracking.
+
+### When to fork
+
+Fork when the user wants a variation without modifying (or losing) the original:
+- Recipe variants: "Bolognese (vegan)", "Chicken Curry (mild)", "Sourdough (gluten-free)"
+- Ingredient variants: "My Sourdough Starter" from "Sourdough Starter"
+- Technique variants: "Slow Sauté" from "Sauté"
+- Equipment variants: "Cast Iron (seasoned)" from "Cast Iron Pan"
+
+Always confirm the fork name with the user before forking. The default is
+"{original name} (fork)" but descriptive names make the library easier to navigate.
+
+### Forking a recipe
+
+Use `kitchen__fork_recipe` — this is the only fork tool that also duplicates kitchen data
+(recipe row, ingredients, nutrition). The catalogue Workflow is forked via Core and the
+kitchen metadata is cloned independently.
+
+Accepts optional `{ name }` body to set the fork title directly.
+
+**Flow:**
+1. Confirm variation intent with the user
+2. Ask for the fork name (e.g. "Chicken Curry (mild)")
+3. Call `kitchen__fork_recipe(recipe_id="<uuid>", name="Chicken Curry (mild)")`
+4. Offer to edit the fork immediately using `kitchen__update_recipe_full`
+
+The response includes `forked_from_recipe_id` and `forked_from_recipe_title` — show these
+to the user as a provenance link ("forked from: Original Recipe").
+
+### Forking other primitives (materials, techniques, tools)
+
+Use `kitchen__fork_catalogue_entry` — proxies directly to Core's fork endpoint. Works for
+any primitive type (material, technique, tool, or workflow).
+
+```
+kitchen__fork_catalogue_entry(
+    path="materials/sourdough-starter/manifest.json",
+    name="My Sourdough Starter"
+)
+```
+
+More examples:
+- Technique: `kitchen__fork_catalogue_entry(path="techniques/saute/manifest.json", name="Slow Sauté")`
+- Tool: `kitchen__fork_catalogue_entry(path="tools/cast-iron-pan/manifest.json", name="Cast Iron (seasoned)")`
+
+After forking, the new primitive's `path` (in the response) can be used:
+- As a recipe ingredient (`catalogue_path` field)
+- As a linked technique or tool in `kitchen__update_recipe_full`
+
+If you need to find a primitive's path before forking, use `kitchen__search_catalogue`.
+
+### Provenance fields
+
+| Field | Where | Meaning |
+|---|---|---|
+| `forked_from_recipe_id` | Recipe response | UUID of the source recipe |
+| `forked_from_recipe_title` | Recipe response | Title of the source recipe |
+| `cloned_from` | Primitive response | Catalogue path of the source primitive |
+
+Never follow `cloned_from` blindly — the source primitive may have been edited since
+the fork was created. Forks are fully independent from the moment of creation.
+
+---
+
 ## MCP Tool Reference
 
 ### Stock
@@ -337,7 +406,7 @@ notations.
 | Tool | Endpoint | Description |
 |---|---|---|
 | `kitchen__list_recipes` | GET /recipes | List with filters (cuisine, time, search) |
-| `kitchen__get_recipe` | GET /recipes/{id} | Full recipe with ingredients + nutrition |
+| `kitchen__get_recipe` | GET /recipes/{id} | Full recipe with ingredients, techniques, tools, nutrition |
 | `kitchen__create_recipe` | POST /recipes | Create new recipe |
 | `kitchen__update_recipe` | PUT /recipes/{id} | Update recipe or ingredients |
 | `kitchen__list_can_make` | GET /recipes/can-make | Recipes makeable from current stock |
@@ -345,6 +414,7 @@ notations.
 | `kitchen__update_recipe_full` | PUT /recipes/{id}/full | Orchestrated update: primitives + kitchen rows |
 | `kitchen__delete_recipe` | DELETE /recipes/{id} | Delete kitchen rows (preserves Workflow) |
 | `kitchen__recipe_stock_check` | GET /recipes/{id}/stock-check | Per-ingredient availability |
+| `kitchen__fork_recipe` | POST /recipes/{id}/fork | Fork recipe into independent copy. Optional body: `{ name }`. Returns full recipe with provenance fields. |
 
 ### Nutrition
 | Tool | Endpoint | Description |
@@ -371,24 +441,7 @@ notations.
 | Tool | Endpoint | Description |
 |---|---|---|
 | `kitchen__search_catalogue` | GET /catalogue/search | Search catalogue with optional type filter |
-
-### Forking Recipes
-| Tool | Endpoint | Description |
-|---|---|---|
-| `kitchen__fork_recipe` | POST /recipes/{id}/fork | Fork a recipe into an independent copy |
-
-**When to fork:** Fork a recipe when you want to create a variation without losing the original.
-Common examples: "Sourdough (gluten-free version)", "Chicken Curry (mild)", "Bolognese (vegan)".
-
-**What forking does:**
-1. Forks the linked catalogue Workflow primitive (via `fork_primitive` — sets `cloned_from` for provenance)
-2. Duplicates the kitchen_recipes row (title becomes "{original} (fork)")
-3. Copies all ingredients and nutrition data to the new recipe
-
-**After forking:** Use `kitchen__update_recipe` or `kitchen__update_recipe_full` to customise the forked version.
-The forked recipe is fully independent — changes to the original do not affect the fork.
-
-**Tool call:** `kitchen__fork_recipe(recipe_id="<uuid>")` — no body required. Returns the full new recipe.
+| `kitchen__fork_catalogue_entry` | POST /catalogue/primitives/{path}/fork | Fork any primitive (material/technique/tool/workflow). Optional body: `{ name, description }`. Returns forked primitive with `cloned_from`. |
 
 ### Attaching Media to Recipes
 Use `create_binary_ref` (shell-level tool) to attach photos, videos, or documents to a recipe:
@@ -415,7 +468,9 @@ the kitchen recipe id.
 |---|---|
 | `search_catalogue` | Resolve ingredient names to catalogue_path (shell-level) |
 | `create_primitive` | Create new ingredient entries (type=material) — only needed outside of recipe flows; `kitchen__create_recipe_full` handles this automatically |
-| `fork_primitive` | Fork a catalogue primitive (called internally by `kitchen__fork_recipe`) |
 | `create_binary_ref` | Attach a photo/video/document to a recipe or ingredient |
 | `list_binary_refs` | List all media attached to a recipe or ingredient |
+
+> **Forking primitives from within kitchen flows:** use `kitchen__fork_catalogue_entry`
+> (not the shell-level `fork_primitive`). For full recipe forking, use `kitchen__fork_recipe`.
 

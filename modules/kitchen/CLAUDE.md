@@ -98,7 +98,7 @@ humans; MCP is for AI — same backend, different clients.
 
 ## UserDB Tables (all prefixed kitchen_)
 
-- kitchen_recipes — recipe records linking workflow primitives to kitchen metadata
+- kitchen_recipes — recipe records linking workflow primitives to kitchen metadata (`forked_from_recipe_id` for provenance)
 - kitchen_recipe_ingredients — ingredient entries per recipe with quantities
 - kitchen_recipe_nutrition — nutritional data per recipe (per serving)
 - kitchen_ingredient_nutrition — nutritional data per ingredient (per 100g)
@@ -131,13 +131,13 @@ All mounted at /modules/kitchen/. Auto-generate MCP tools with naming: kitchen__
 | Method | Path | MCP name | Description |
 |--------|------|----------|-------------|
 | GET | /recipes | list_recipes | List with filters (cuisine_tag, max_cook_time, search) |
-| GET | /recipes/{id} | get_recipe | Full recipe with ingredients, nutrition, cook summary |
+| GET | /recipes/{id} | get_recipe | Full recipe with ingredients, techniques, tools, nutrition, cook summary, provenance |
 | POST | /recipes | create_recipe | Create new recipe |
 | PUT | /recipes/{id} | update_recipe | Update recipe metadata and/or ingredients |
 | POST | /recipes/full | create_recipe_full | Create recipe with full primitive composition |
 | PUT | /recipes/{id}/full | update_recipe_full | Update recipe with full primitive composition |
 | DELETE | /recipes/{id} | delete_recipe | Delete recipe (preserves Workflow primitive) |
-| POST | /recipes/{id}/fork | fork_recipe | Fork recipe into independent copy — forks Workflow primitive + duplicates kitchen metadata |
+| POST | /recipes/{id}/fork | fork_recipe | Fork recipe + kitchen metadata. Optional `{ name }` body. Returns provenance fields. |
 | GET | /recipes/can-make | list_can_make | Recipes makeable from current stock |
 | GET | /recipes/{id}/stock-check | recipe_stock_check | Per-ingredient stock status |
 
@@ -166,6 +166,7 @@ All mounted at /modules/kitchen/. Auto-generate MCP tools with naming: kitchen__
 | Method | Path | MCP name | Description |
 |--------|------|----------|-------------|
 | GET | /catalogue/search | search_catalogue | Search catalogue with optional type filter |
+| POST | /catalogue/primitives/{path}/fork | fork_catalogue_entry | Fork any primitive (material/technique/tool/workflow). Optional `{ name, description }`. Returns forked primitive with `cloned_from`. |
 
 ### Shopping List (persistent)
 | Method | Path | MCP name | Description |
@@ -228,23 +229,50 @@ sidebar instead of appearing as views in the shell sidebar.
 
 ### Orchestrated Recipe Creation (K9a)
 
-The kitchen backend now creates catalogue primitives directly via `CatalogueClient`:
+The kitchen backend creates catalogue primitives directly via `CatalogueClient`:
 - `POST /recipes/full` — one API call creates Material primitives (for new ingredients),
   a Workflow primitive (with relationships to materials/techniques/tools), pins to
   inventory, and creates kitchen_recipes + kitchen_recipe_ingredients rows.
 - `PUT /recipes/{id}/full` — same orchestration for updates.
 - `GET /catalogue/search` — proxy to Core search with optional type filter.
 
-This is a departure from the original "kitchen never calls Core" rule — the kitchen
-backend now imports `get_catalogue_client` from `makestack_sdk` and creates primitives
-directly. This is intentional for the recipe builder UX.
+The kitchen backend imports `get_catalogue_client` from `makestack_sdk` and calls Core
+directly. This is intentional for the recipe builder and forking UX.
+
+
+### Forking (K10)
+
+Forking is supported for all primitive types:
+
+**Recipe fork** (`POST /recipes/{id}/fork`):
+- Forks the linked Workflow primitive via `CatalogueClient.fork_primitive()`
+- Duplicates `kitchen_recipes`, `kitchen_recipe_ingredients`, `kitchen_recipe_nutrition` rows
+- Stores `forked_from_recipe_id` for kitchen-level provenance
+- Accepts optional `{ name }` body to customise the fork title
+- `GET /recipes/{id}` response now includes `forked_from_recipe_id`, `forked_from_recipe_title`, `techniques[]`, `tools[]`
+
+**General primitive fork** (`POST /catalogue/primitives/{path}/fork`):
+- Proxies to `CatalogueClient.fork_primitive()` for any primitive type (material, technique, tool, workflow)
+- Response includes `cloned_from` for Core-level provenance
+- No kitchen DB duplication — purely a catalogue operation
+
+**`_fetch_recipe_full` helper** (routes.py):
+- Accepts optional `catalogue: CatalogueClient | None`
+- When provided, calls `catalogue.get_relationships(workflow_id)` to fetch linked techniques/tools
+- Gracefully returns empty `techniques`/`tools` arrays if Core is unavailable
+- LEFT JOINs `kitchen_recipes` on `forked_from_recipe_id` to include provenance title
+
+**Frontend fork UI:**
+- `KitchenRecipes.tsx` — GitFork button on recipe + inline name input + provenance badge + per-ingredient/technique/tool hover fork buttons
+- `KitchenRecipeDetail.tsx` — same fork UI; on success navigates to `/kitchen/recipes/{id}/edit`
+- `KitchenLarder.tsx` — hover GitFork button per stock item (forks the material)
 
 
 ## Current State
 
-K9 complete: orchestrated recipe CRUD (7 new endpoints), recipe builder UI,
-stock edit/delete, cook log record form, meal plan clear entry.
-Backend: 138 passing tests. 36 MCP tools. TypeScript: 0 errors.
-Frontend: RecipeBuilder, IngredientSearch, StockItemDialog, RecordCookPanel.
-New views: /kitchen/recipes/new, /kitchen/recipes/:id/edit.
-Post-K9: recipe forking (`POST /recipes/{id}/fork` → `kitchen__fork_recipe`), binary media attachments via shell's generic `/api/binary-refs/` (no new kitchen endpoints needed).
+K10 complete: forking for all primitive types (recipes, materials, techniques, tools).
+Backend: 138 passing tests. 38 MCP tools. TypeScript: 0 errors.
+Migration 006: `forked_from_recipe_id` column on `kitchen_recipes`.
+New endpoint: `POST /catalogue/primitives/{path}/fork` → `kitchen__fork_catalogue_entry`.
+Frontend: fork UI in KitchenRecipes, KitchenRecipeDetail, KitchenLarder.
+SKILL.md: Section 12 covers full forking flows for all primitive types.

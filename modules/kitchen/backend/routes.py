@@ -25,6 +25,7 @@ from makestack_sdk.catalogue_client import (
     CatalogueClient,
     get_catalogue_client,
     CoreUnavailableError,
+    CoreNotFoundError,
 )
 
 
@@ -70,6 +71,8 @@ StockItemCreate = _m.StockItemCreate
 RecipeFullCreate = _m.RecipeFullCreate
 RecipeIngredientInput = _m.RecipeIngredientInput
 StockItemUpdate = _m.StockItemUpdate
+RecipeForkRequest = _m.RecipeForkRequest
+CatalogueForkRequest = _m.CatalogueForkRequest
 
 # Nutrition calculator
 calculate_recipe_nutrition = _n.calculate_recipe_nutrition
@@ -115,10 +118,35 @@ def _total_time(prep: int | None, cook: int | None) -> int | None:
     return total if total > 0 else None
 
 
-async def _fetch_recipe_full(db: ModuleUserDB, recipe_id: str) -> dict | None:
-    """Fetch a recipe with its ingredients, nutrition, and cook summary."""
+def _name_from_path(path: str) -> str:
+    """Convert a catalogue path to a human-readable name.
+
+    E.g. 'techniques/slow-saute/manifest.json' → 'Slow Saute'
+    """
+    parts = path.split("/")
+    slug = parts[-2] if len(parts) >= 2 else (parts[-1] or parts[0])
+    return " ".join(w.capitalize() for w in slug.split("-"))
+
+
+async def _fetch_recipe_full(
+    db: ModuleUserDB,
+    recipe_id: str,
+    catalogue: CatalogueClient | None = None,
+) -> dict | None:
+    """Fetch a recipe with ingredients, nutrition, cook summary, and linked primitives.
+
+    When ``catalogue`` is provided, also fetches linked techniques and tools from
+    Core via the Workflow primitive's relationships. Gracefully returns empty arrays
+    if Core is unavailable or the workflow is not linked.
+    """
     row = await db.fetch_one(
-        "SELECT * FROM kitchen_recipes WHERE id = ?", [recipe_id]
+        """
+        SELECT r.*, src.title AS forked_from_recipe_title
+        FROM kitchen_recipes r
+        LEFT JOIN kitchen_recipes src ON src.id = r.forked_from_recipe_id
+        WHERE r.id = ?
+        """,
+        [recipe_id],
     )
     if not row:
         return None
@@ -153,6 +181,23 @@ async def _fetch_recipe_full(db: ModuleUserDB, recipe_id: str) -> dict | None:
         "last_cooked_at": cook_row["last_cooked_at"] if cook_row else None,
     }
     r["total_time_mins"] = _total_time(r.get("prep_time_mins"), r.get("cook_time_mins"))
+
+    # Fetch linked techniques and tools from Core relationships (graceful).
+    r["techniques"] = []
+    r["tools"] = []
+    if catalogue and r.get("workflow_id"):
+        try:
+            rels = await catalogue.get_relationships(r["workflow_id"])
+            for rel in rels:
+                if rel.source_path != r["workflow_id"]:
+                    continue  # skip reverse-direction rels
+                entry = {"path": rel.target_path, "name": _name_from_path(rel.target_path)}
+                if rel.relationship_type == "uses_technique":
+                    r["techniques"].append(entry)
+                elif rel.relationship_type == "uses_tool":
+                    r["tools"].append(entry)
+        except Exception:
+            pass  # Core unavailable — return empty arrays
 
     return r
 
@@ -507,7 +552,7 @@ async def create_recipe_full(
             ],
         )
 
-    return await _fetch_recipe_full(db, recipe_id)
+    return await _fetch_recipe_full(db, recipe_id, catalogue)
 
 
 # ---------------------------------------------------------------------------
@@ -552,18 +597,21 @@ async def delete_recipe(
 @router.post("/recipes/{recipe_id}/fork", status_code=201)
 async def fork_recipe(
     recipe_id: str,
+    body: RecipeForkRequest = RecipeForkRequest(),
     db: ModuleUserDB = Depends(get_db),
     catalogue: CatalogueClient = Depends(get_catalogue_client),
 ):
     """Fork a recipe into an independent copy.
 
-    Creates a fork of the catalogue Workflow primitive (via the Shell's fork endpoint)
-    and duplicates all kitchen metadata (recipe row, ingredients, nutrition) to produce
-    a fully independent variant. The fork's cloned_from field links back to the original
-    workflow for provenance.
+    Creates a fork of the catalogue Workflow primitive and duplicates all kitchen
+    metadata (recipe row, ingredients, nutrition). The fork's cloned_from field links
+    back to the original workflow for provenance. Accepts optional ``{ name }`` body to
+    customise the fork title; defaults to "{original title} (fork)".
 
-    Returns the new recipe record (same shape as GET /recipes/{id}).
+    Returns the new recipe record (same shape as GET /recipes/{id}), including
+    forked_from_recipe_id and forked_from_recipe_title for provenance display.
     """
+
     # Load source recipe.
     src = await db.fetch_one(
         "SELECT * FROM kitchen_recipes WHERE id = ?", [recipe_id]
@@ -578,13 +626,15 @@ async def fork_recipe(
             },
         )
 
+    fork_title = body.name or f"{src['title']} (fork)"
+
     # Fork the catalogue Workflow primitive (if one is linked).
     new_workflow_id = src["workflow_id"]
     if src.get("workflow_id"):
         try:
             forked = await catalogue.fork_primitive(
                 src["workflow_id"],
-                name=f"{src['title']} (fork)",
+                name=fork_title,
             )
             new_workflow_id = forked.path
         except Exception:
@@ -594,17 +644,18 @@ async def fork_recipe(
     now = datetime.now(timezone.utc).isoformat()
     new_id = str(uuid.uuid4())
 
-    # Duplicate the kitchen_recipes row.
+    # Duplicate the kitchen_recipes row with provenance.
     await db.execute(
         """
         INSERT INTO kitchen_recipes
             (id, title, description, workflow_id, cuisine_tag,
-             prep_time_mins, cook_time_mins, servings, notes, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             prep_time_mins, cook_time_mins, servings, notes,
+             forked_from_recipe_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         [
             new_id,
-            f"{src['title']} (fork)",
+            fork_title,
             src["description"],
             new_workflow_id,
             src["cuisine_tag"],
@@ -612,6 +663,7 @@ async def fork_recipe(
             src["cook_time_mins"],
             src["servings"],
             src["notes"],
+            recipe_id,
             now,
             now,
         ],
@@ -665,13 +717,17 @@ async def fork_recipe(
             ],
         )
 
-    return await _fetch_recipe_full(db, new_id)
+    return await _fetch_recipe_full(db, new_id, catalogue)
 
 
 @router.get("/recipes/{recipe_id}")
-async def get_recipe(recipe_id: str, db: ModuleUserDB = Depends(get_db)):
-    """Return full recipe with ingredients, nutrition, and cook summary."""
-    result = await _fetch_recipe_full(db, recipe_id)
+async def get_recipe(
+    recipe_id: str,
+    db: ModuleUserDB = Depends(get_db),
+    catalogue: CatalogueClient = Depends(get_catalogue_client),
+):
+    """Return full recipe with ingredients, nutrition, cook summary, techniques, and tools."""
+    result = await _fetch_recipe_full(db, recipe_id, catalogue)
     if result is None:
         raise HTTPException(
             status_code=404,
@@ -1906,7 +1962,7 @@ async def update_recipe_full(
             ],
         )
 
-    return await _fetch_recipe_full(db, recipe_id)
+    return await _fetch_recipe_full(db, recipe_id, catalogue)
 
 
 # ---------------------------------------------------------------------------
@@ -1948,6 +2004,60 @@ async def search_catalogue(
         ],
         "total": len(results) if not type else len(results),
     }
+
+
+# ---------------------------------------------------------------------------
+# Fork any catalogue primitive (material, technique, tool, workflow)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/catalogue/primitives/{path:path}/fork", status_code=201)
+async def fork_catalogue_entry(
+    path: str,
+    body: CatalogueForkRequest = CatalogueForkRequest(),
+    catalogue: CatalogueClient = Depends(get_catalogue_client),
+):
+    """Fork any catalogue primitive — material, technique, tool, or workflow.
+
+    Proxies to Core's fork endpoint via the Shell's CatalogueClient. Returns the
+    new primitive with cloned_from set to the source path for provenance tracking.
+
+    Use this for ingredient variants ("My Sourdough Starter"), technique adaptations
+    ("Slow Sauté"), or equipment customisation ("Cast Iron (seasoned)").
+    """
+    try:
+        result = await catalogue.fork_primitive(
+            path,
+            name=body.name,
+            description=body.description,
+        )
+        return {
+            "id": result.id,
+            "type": result.type,
+            "name": result.name,
+            "slug": result.slug,
+            "path": result.path,
+            "cloned_from": result.cloned_from,
+            "description": result.description,
+            "tags": result.tags,
+        }
+    except CoreUnavailableError:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "Core unavailable — cannot fork primitive",
+                "suggestion": "Retry when Core is connected",
+            },
+        )
+    except CoreNotFoundError:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "Primitive not found",
+                "path": path,
+                "suggestion": "Use kitchen__search_catalogue to find the correct path",
+            },
+        )
 
 
 # ---------------------------------------------------------------------------
